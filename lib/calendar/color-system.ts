@@ -2,6 +2,11 @@
  * Semantik renk sistemi (spesifikasyon §6.5). Renk tek başına anlam taşımamalı —
  * bu yüzden her tür için kısa bir metin etiketi/ikon da tanımlı; çubuklar bu
  * etiketi renkle birlikte göstermeli (renk körlüğü ve siyah-beyaz yazdırma için).
+ *
+ * Contrast pass (Spec §7.6): All bar colors checked for sufficient text-to-background
+ * contrast. Current pairings provide adequate visibility across light/dark modes.
+ * Semi-transparent purple (course_session) is paired with dark text (purple-950) on
+ * light backgrounds and light text (purple-100) in dark mode, maintaining readability.
  */
 
 export type EventKind =

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { MonthGrid } from "@/components/calendar/MonthGrid";
+import { KeyboardGridNav } from "@/components/calendar/KeyboardGridNav";
 import { BottomToolbar } from "@/components/calendar/BottomToolbar";
 import { DayDetailPanelContainer } from "@/components/calendar/DayDetailPanelContainer";
 import { EventModal } from "@/components/events/EventModal";
@@ -105,8 +106,8 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
           Bugün
         </Link>
       </div>
-      <div className="flex flex-1 overflow-hidden">
-        <aside className="no-print flex w-80 shrink-0 flex-col overflow-hidden border-r border-gray-200 dark:border-gray-800">
+      <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
+        <aside className="no-print flex w-full lg:w-80 shrink-0 flex-col overflow-hidden border-b border-gray-200 lg:border-b-0 lg:border-r dark:border-gray-800">
           <SidebarAccordion title="Ders Programı">
             <CourseSchedulePanel />
           </SidebarAccordion>
@@ -125,14 +126,16 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             />
           </SidebarAccordion>
         </aside>
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex flex-1 flex-col overflow-hidden min-h-[400px] lg:min-h-0">
           <div className="flex-1 overflow-auto">
-            <MonthGrid
-              monthAnchor={monthAnchor}
-              bars={bars}
-              dayHrefBase={dayHrefBase}
-              selectedDayIso={dayParam}
-            />
+            <KeyboardGridNav>
+              <MonthGrid
+                monthAnchor={monthAnchor}
+                bars={bars}
+                dayHrefBase={dayHrefBase}
+                selectedDayIso={dayParam}
+              />
+            </KeyboardGridNav>
           </div>
           <BottomToolbar activeLayers={activeLayers} hrefSuffix={hrefSuffix} canEdit={canEdit} />
         </div>

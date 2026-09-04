@@ -40,7 +40,7 @@ export function MonthGrid({ monthAnchor, bars = [], dayHrefBase, selectedDayIso 
 
   return (
     <div className="flex h-full flex-col">
-      <div className="grid grid-cols-7 border-b border-gray-200 dark:border-gray-800">
+      <div className="hidden sm:grid grid-cols-7 border-b border-gray-200 dark:border-gray-800">
         {WEEKDAY_LABELS.map((label) => (
           <div key={label} className="p-2 text-center text-xs font-medium text-gray-500 dark:text-gray-400">
             {label}
@@ -48,7 +48,7 @@ export function MonthGrid({ monthAnchor, bars = [], dayHrefBase, selectedDayIso 
         ))}
       </div>
       <div className="flex flex-1 flex-col">
-        {weeks.map((week) => {
+        {weeks.map((week, weekIndex) => {
           const lanes = assignWeekBarLanes(bars, week[0]);
           const visibleLanes = lanes.filter((l) => l.lane < MAX_VISIBLE_LANES);
           const laneRowCount = Math.min(
@@ -57,12 +57,13 @@ export function MonthGrid({ monthAnchor, bars = [], dayHrefBase, selectedDayIso 
           );
 
           return (
-            <div key={week[0].toISOString()} className="relative grid grid-cols-7">
-              {week.map((day) => {
+            <div key={week[0].toISOString()} className="relative grid grid-cols-1 sm:grid-cols-7">
+              {week.map((day, dayInWeekIndex) => {
                 const coveringBars = bars.filter((bar) => barCoversDay(bar, day));
                 const visibleCoveringCount = visibleLanes.filter((l) => barCoversDay(l.bar, day)).length;
                 const overflow = coveringBars.length - visibleCoveringCount;
                 const iso = dayIso(day);
+                const flatDayIndex = weekIndex * 7 + dayInWeekIndex;
                 return (
                   <DayCell
                     key={day.toISOString()}
@@ -73,12 +74,13 @@ export function MonthGrid({ monthAnchor, bars = [], dayHrefBase, selectedDayIso 
                     overflowCount={Math.max(0, overflow)}
                     href={dayHrefBase ? `${dayHrefBase}&day=${iso}` : undefined}
                     selected={selectedDayIso === iso}
+                    dayIndex={flatDayIndex}
                   />
                 );
               })}
               {laneRowCount > 0 && (
                 <div
-                  className="pointer-events-none absolute left-0 right-0 top-6 grid grid-cols-7 gap-y-0.5 px-1"
+                  className="pointer-events-none hidden sm:grid absolute left-0 right-0 top-6 grid-cols-7 gap-y-0.5 px-1"
                   style={{ gridTemplateRows: `repeat(${laneRowCount}, minmax(0, 1.1rem))` }}
                 >
                   {visibleLanes.map(({ bar, startCol, endCol, lane }) => {

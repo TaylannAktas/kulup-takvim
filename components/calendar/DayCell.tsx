@@ -11,9 +11,11 @@ type DayCellProps = {
   overflowCount: number;
   href?: string;
   selected?: boolean;
+  /** 0-based index in the flattened month grid for keyboard navigation (spec §7.6). */
+  dayIndex?: number;
 };
 
-export function DayCell({ day, monthAnchor, today, dominantKind, overflowCount, href, selected }: DayCellProps) {
+export function DayCell({ day, monthAnchor, today, dominantKind, overflowCount, href, selected, dayIndex }: DayCellProps) {
   const inCurrentMonth = isSameMonth(day, monthAnchor);
   const isToday = isSameDay(day, today);
   const weekend = isWeekend(day);
@@ -52,11 +54,15 @@ export function DayCell({ day, monthAnchor, today, dominantKind, overflowCount, 
 
   if (href) {
     return (
-      <Link href={href} scroll={false} className={className}>
+      <Link href={href} scroll={false} className={className} data-day-index={dayIndex}>
         {content}
       </Link>
     );
   }
 
-  return <div className={className}>{content}</div>;
+  return (
+    <div className={className} data-day-index={dayIndex}>
+      {content}
+    </div>
+  );
 }
