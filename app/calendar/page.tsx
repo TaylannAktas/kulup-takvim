@@ -4,8 +4,15 @@ import { BottomToolbar } from "@/components/calendar/BottomToolbar";
 import { SidebarAccordion } from "@/components/sidebar/SidebarAccordion";
 import { AcademicCalendarPanel } from "@/components/sidebar/AcademicCalendarPanel";
 import { ExamSchedulePanel } from "@/components/sidebar/ExamSchedulePanel";
-import { formatMonthTitle, nextMonth, previousMonth, todayInClubTime } from "@/lib/calendar/date-utils";
+import {
+  formatMonthTitle,
+  getMonthGridDays,
+  nextMonth,
+  previousMonth,
+  todayInClubTime,
+} from "@/lib/calendar/date-utils";
 import { parseLayers } from "@/lib/calendar/layers";
+import { getMonthCalendarBars } from "@/lib/calendar/month-events";
 
 type CalendarPageProps = {
   searchParams: Promise<{ month?: string; layers?: string }>;
@@ -30,6 +37,9 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
   const { month, layers: layersParam } = await searchParams;
   const monthAnchor = parseMonthParam(month);
   const activeLayers = parseLayers(new URLSearchParams(layersParam ? { layers: layersParam } : {}));
+
+  const gridDays = getMonthGridDays(monthAnchor);
+  const bars = await getMonthCalendarBars(gridDays[0], gridDays[gridDays.length - 1], activeLayers);
 
   const layersSuffix = layersParam ? `&layers=${layersParam}` : "";
 
@@ -74,7 +84,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
         </aside>
         <div className="flex flex-1 flex-col overflow-hidden">
           <div className="flex-1 overflow-auto">
-            <MonthGrid monthAnchor={monthAnchor} />
+            <MonthGrid monthAnchor={monthAnchor} bars={bars} />
           </div>
           <BottomToolbar activeLayers={activeLayers} />
         </div>
