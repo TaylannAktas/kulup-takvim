@@ -163,3 +163,12 @@ hiçbir zaman atlanmıyor (boş dizi yazılıyor) — arayüz doğrudan `.length
   test edilecek — gerçek örnek olmaması testin geçersizliği anlamına gelmiyor, sadece
   kaynağın söz konusu senaryoyu henüz üretmediği anlamına geliyor.
 - Google Cloud OAuth istemcisi ve Neon projesi henüz kurulmadı (Faz 0, kullanıcı adımı).
+- **Playwright e2e kapsamı Faz 3'te bilinçli olarak sınırlı** (`tests/e2e/auth.spec.ts`):
+  gerçek bir Google hesabıyla giriş Faz 0 tamamlanmadan test edilemiyor, bu yüzden
+  şimdilik sadece oturumdan bağımsız davranışlar test ediliyor (girişsiz erişim
+  reddi, statik sayfa render'ı, cron/API kapıları). "Etkinlik oluştur" gibi gerçek
+  oturum gerektiren akışlar için Faz 0 sonrası: ya gerçek bir test Google hesabıyla
+  giriş yapılıp bir Playwright "storageState" kaydedilecek, ya da yalnızca test
+  ortamında aktif olan bir NextAuth Credentials sağlayıcısı eklenip üretim
+  yapılandırmasından tamamen ayrı tutulacak — hangisi seçilirse seçilsin, üretim
+  auth mantığına (ALLOWED_EMAILS kontrolü dahil) dokunulmayacak.
