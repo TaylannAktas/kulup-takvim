@@ -1,7 +1,7 @@
 import "server-only";
 import { eq, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { academicCalendarEntries, examSessions, clubEvents } from "@/lib/db/schema";
+import { academicCalendarEntries, examSessions, clubEvents, courseSessions } from "@/lib/db/schema";
 import {
   academicCalendarKindFromCategory,
   examTypeKind,
@@ -12,6 +12,7 @@ import { makeLayerId, isLayerActive } from "@/lib/calendar/layers";
 import { FACULTY_CODES } from "@/lib/scrapers/exam-schedule/fetch";
 import { toClubTime } from "@/lib/calendar/date-utils";
 import { hasAnyConflict, type ConflictFlags } from "@/lib/calendar/conflict-detection";
+import { COURSE_LAYER_NAMESPACE } from "@/lib/calendar/course-layers";
 
 export type CalendarBarItem = {
   id: string;
@@ -56,6 +57,33 @@ export function dominantKind(kinds: EventKind[]): EventKind | null {
 
 function toDateOnly(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+/**
+ * Ders programı katmanları (CourseSchedulePanel'in "Sınıflar/Derslikler/Dersler"
+ * sekmelerinden birinden seçim). Diğer katmanlardan farklı olarak aynı anda
+ * en fazla BİR ders programı katmanı aktif olabilir — aksi halde "toplu
+ * çizelge" anlamsızlaşır; panel bunu tek seçimli (radio benzeri) davranışla
+ * sağlar, burada sadece bulunan ilk eşleşme kullanılır.
+ */
+function parseActiveCourseLayer(
+  activeLayers: Set<string>
+): { type: keyof typeof COURSE_LAYER_NAMESPACE; value: string } | null {
+  for (const layer of activeLayers) {
+    for (const [type, namespace] of Object.entries(COURSE_LAYER_NAMESPACE)) {
+      const prefix = `${namespace}:`;
+      if (layer.startsWith(prefix)) {
+        return { type: type as keyof typeof COURSE_LAYER_NAMESPACE, value: layer.slice(prefix.length) };
+      }
+    }
+  }
+  return null;
+}
+
+/** ISO hafta günü (Pazartesi=1 … Pazar=7) — course_sessions.weekday ile aynı kural. */
+function isoWeekday(date: Date): number {
+  const day = date.getDay();
+  return day === 0 ? 7 : day;
 }
 
 /**
@@ -152,6 +180,37 @@ export async function getMonthCalendarBars(
       endDate: clippedEnd,
       hasConflict: hasAnyConflict((row.conflictFlags as ConflictFlags | null) ?? { exam: [], holiday: [], event: [] }),
     });
+  }
+
+  // Ders programı: CourseSchedulePanel'den bir sınıf/derslik/ders seçiliyse,
+  // o seçime uyan oturumlar haftalık desenden görünür aralıktaki her tarihe
+  // "çoğaltılarak" bara çevrilir (course_sessions belirli bir tarihe değil
+  // haftanın gününe bağlıdır — bkz. lib/availability/overlap.ts'teki aynı varsayım).
+  const activeCourseLayer = parseActiveCourseLayer(activeLayers);
+  if (activeCourseLayer) {
+    const filter =
+      activeCourseLayer.type === "import"
+        ? eq(courseSessions.importId, activeCourseLayer.value)
+        : activeCourseLayer.type === "room"
+          ? eq(courseSessions.room, activeCourseLayer.value)
+          : eq(courseSessions.courseCode, activeCourseLayer.value);
+
+    const sessionRows = await db.select().from(courseSessions).where(filter);
+
+    for (let day = new Date(start); day <= end; day.setDate(day.getDate() + 1)) {
+      const weekday = isoWeekday(day);
+      for (const session of sessionRows) {
+        if (session.weekday !== weekday) continue;
+        const date = toDateOnly(day);
+        bars.push({
+          id: `course:${session.id}:${date.toISOString().slice(0, 10)}`,
+          label: `${session.courseCode ?? "?"}${session.startTime ? ` ${session.startTime}` : ""}`,
+          kind: "course_session",
+          startDate: date,
+          endDate: date,
+        });
+      }
+    }
   }
 
   return bars;

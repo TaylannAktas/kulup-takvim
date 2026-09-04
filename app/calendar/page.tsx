@@ -7,6 +7,7 @@ import { DayNoteModal } from "@/components/notes/DayNoteModal";
 import { SidebarAccordion } from "@/components/sidebar/SidebarAccordion";
 import { AcademicCalendarPanel } from "@/components/sidebar/AcademicCalendarPanel";
 import { ExamSchedulePanel } from "@/components/sidebar/ExamSchedulePanel";
+import { CourseSchedulePanel } from "@/components/sidebar/CourseSchedulePanel";
 import {
   formatMonthTitle,
   getMonthGridDays,
@@ -107,13 +108,21 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
       <div className="flex flex-1 overflow-hidden">
         <aside className="flex w-80 shrink-0 flex-col overflow-hidden border-r border-gray-200 dark:border-gray-800">
           <SidebarAccordion title="Ders Programı">
-            <p className="py-4 text-center text-xs text-gray-400">Faz 4&apos;te eklenecek</p>
+            <CourseSchedulePanel />
           </SidebarAccordion>
           <SidebarAccordion title="Sınav Programı">
-            <ExamSchedulePanel activeLayers={activeLayers} />
+            <ExamSchedulePanel
+              activeLayers={activeLayers}
+              monthParam={monthParam(monthAnchor)}
+              dayParam={dayParam}
+            />
           </SidebarAccordion>
           <SidebarAccordion title="Akademik Takvim" defaultOpen>
-            <AcademicCalendarPanel activeLayers={activeLayers} />
+            <AcademicCalendarPanel
+              activeLayers={activeLayers}
+              monthParam={monthParam(monthAnchor)}
+              dayParam={dayParam}
+            />
           </SidebarAccordion>
         </aside>
         <div className="flex flex-1 flex-col overflow-hidden">

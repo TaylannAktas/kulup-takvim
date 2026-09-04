@@ -28,9 +28,16 @@ function formatEntryDate(start: Date | null, end: Date | null): string {
 
 type AcademicCalendarPanelProps = {
   activeLayers: Set<string>;
+  /** Filtre çipleri tıklanınca ay/gün durumu kaybolmasın diye (bkz. sayfa üstü hrefSuffix mantığı). */
+  monthParam: string;
+  dayParam?: string;
 };
 
-export async function AcademicCalendarPanel({ activeLayers }: AcademicCalendarPanelProps) {
+export async function AcademicCalendarPanel({
+  activeLayers,
+  monthParam: currentMonthParam,
+  dayParam: currentDayParam,
+}: AcademicCalendarPanelProps) {
   const [session, rows] = await Promise.all([
     auth(),
     db
@@ -74,10 +81,13 @@ export async function AcademicCalendarPanel({ activeLayers }: AcademicCalendarPa
           const nextLayers = new Set(activeLayers);
           if (active) nextLayers.delete(layerId);
           else nextLayers.add(layerId);
+          const nextHref = `/calendar?month=${currentMonthParam}${
+            currentDayParam ? `&day=${currentDayParam}` : ""
+          }${nextLayers.size > 0 ? `&layers=${[...nextLayers].sort().join(",")}` : ""}`;
           return (
             <Link
               key={value}
-              href={`?layers=${[...nextLayers].sort().join(",")}`}
+              href={nextHref}
               scroll={false}
               className={[
                 "rounded-full border px-2 py-0.5 text-xs",

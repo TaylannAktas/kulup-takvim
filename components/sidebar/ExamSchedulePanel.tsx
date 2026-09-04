@@ -48,6 +48,8 @@ function FilterChip({ href, active, label }: { href: string; active: boolean; la
 
 type ExamSchedulePanelProps = {
   activeLayers: Set<string>;
+  monthParam: string;
+  dayParam?: string;
 };
 
 /**
@@ -57,7 +59,7 @@ type ExamSchedulePanelProps = {
  * var) — keşfedilen `exam_type` değerleri (arasinav/final/mazeret) olduğu gibi
  * gösteriliyor, sabit bir "Vize 1/2" varsayımı yapılmıyor.
  */
-export async function ExamSchedulePanel({ activeLayers }: ExamSchedulePanelProps) {
+export async function ExamSchedulePanel({ activeLayers, monthParam, dayParam }: ExamSchedulePanelProps) {
   const activeFaculties = FACULTY_CODES.filter((code) =>
     isLayerActive(activeLayers, makeLayerId(FACULTY_NAMESPACE, code))
   );
@@ -91,7 +93,8 @@ export async function ExamSchedulePanel({ activeLayers }: ExamSchedulePanelProps
     const next = new Set(activeLayers);
     if (next.has(id)) next.delete(id);
     else next.add(id);
-    return `?layers=${[...next].sort().join(",")}`;
+    const layersSuffix = next.size > 0 ? `&layers=${[...next].sort().join(",")}` : "";
+    return `/calendar?month=${monthParam}${dayParam ? `&day=${dayParam}` : ""}${layersSuffix}`;
   }
 
   const grouped = new Map<string, typeof visibleRows>();

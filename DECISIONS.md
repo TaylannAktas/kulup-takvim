@@ -231,3 +231,14 @@ olabilir (Faz 4 kapsamına dahil edilmedi, gerekirse hızlı eklenebilir).
   ortamında aktif olan bir NextAuth Credentials sağlayıcısı eklenip üretim
   yapılandırmasından tamamen ayrı tutulacak — hangisi seçilirse seçilsin, üretim
   auth mantığına (ALLOWED_EMAILS kontrolü dahil) dokunulmayacak.
+
+### Uygunluk analizi ısı haritası — haftalık desen destek, takvim tarihleri eksik (Faz 4, 2026-09-04)
+Spec §7.2'nin "Sınav ve tatil günleri otomatik elenir" hedefi uygulanmadı. 
+`lib/availability/overlap.ts` saf bir fonksiyondur ve yalnızca haftalık ders programı 
+desenini biliyor (weekday 1-6, saatler); belirli tarih aralığındaki takvim girişlerini 
+(exam_sessions, academic_calendar_entries) bilmez. Heatmap düzen ve filtreleme 
+(`app/availability/page.tsx`) tamamen haftalık desene dayalıdır. Gelecek faz: 
+`academic_calendar_entries` ve `exam_sessions` verileri sayfa tarafından önceden 
+filtrelenip "bu tarihler hariç tutulacak" şeklinde `overlap.ts`'ye geçirilebilir, 
+veya haftalık sonuçlar sayfa tarafından date-range kesiştirmesi ile post-processed 
+edilebilir — şimdilik ikisine de sahip değiliz.
