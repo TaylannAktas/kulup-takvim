@@ -152,10 +152,67 @@ hiçbir zaman atlanmıyor (boş dizi yazılıyor) — arayüz doğrudan `.length
    halde açık formların "bu kayıt siz düzenlerken değişti" hatası almasına yol
    açardı. Sadece `conflict_flags` yazılıyor, o da JSON gerçekten değiştiyse.
 
+### edupage gerçek yapısı — spesifikasyonun varsayımı geçersiz (2026-09-04)
+Kullanıcının sağladığı gerçek "Web Sayfası, Tamamı" kaydı (`fixtures/edupage/sinif-programi-ornek.htm`,
+Ankara-Gölbaşı / Atılım Üniversitesi, "Sınıflar" sekmesi, tek bir sınıfın haftalık programı):
+
+**Spesifikasyonun varsaydığı** (`ttview`/`dbi`/`datarows` anahtarlı gömülü JSON) **yok.**
+Sayfa artık React tabanlı bir görüntüleyici kullanıyor
+(`a.renderRootComponent(gi1246,"/timetable/ttviewer.js#TTViewer",{"num":"18","user":"Trieda*305",...})`)
+ve veri sayfa yüklendikten SONRA istemci tarafında ayrı bir istekle çekiliyor — düz
+"Ctrl+S" kaydı bu isteğin sonucunu içermiyor (kaydedilen dosya sadece 157 satır,
+tamamı sayfa iskeleti).
+
+**Ama veri aslında kayıtta VAR — JSON değil, render edilmiş bir SVG grafiği olarak.**
+Sayfa, programı bir Excel/PDF export'u gibi SVG `<rect>`/`<text>`/`<title>` öğeleriyle
+çizip DOM'a gömüyor (aSc Ders Planlayıcı'nın kendi SVG render motoru). Bu, JSON
+beklemekten daha kolay ayrıştırılabiliyor çünkü saat aralıkları ve gün etiketleri
+sayıya değil, **metne** dönüşmüş durumda:
+
+- Tek bir `<svg>` (sayfa sonundaki 1x1'lik ölçüm SVG'si hariç), içinde `<g transform="scale(...)">`
+  altında tüm grid ölçeklenmemiş koordinatlarda çizili.
+- **Saat başlıkları** (X ekseni): 12 adet dönem, her biri `<text>"1."</text>` +
+  hemen ardından `<text>"9:30 - 10:20"</text>` gibi bir saat aralığı metni. Dönem
+  sütun genişliği sabit (213.75 birim), ilk dönem x=345'te başlıyor. **Saatler
+  sabit kodlanmıyor** — her dönemin gerçek başlangıç/bitiş saati doğrudan bu
+  metinlerden okunuyor, bu yüzden okul dönem saatlerini değiştirse bile ayrıştırıcı
+  kırılmaz.
+- **Gün etiketleri** (Y ekseni): 6 satır, her biri 255 birim yükseklikte, y=420'de
+  başlıyor: Pa/Sa/Ça/Pe/Cu/Cu. **KRİTİK TUZAK:** son iki satır da "Cu" — Cuma ve
+  Cumartesi ikisi de bu 2 harfli kısaltmada aynı görünüyor, metinden ayırt
+  edilemiyor. Çözüm: gün metnini hiç okuma, **satır sırasına güven**
+  (firstDayOfWeek=1/Pazartesi olduğu ve Pazar hiç yer almadığı için sıra her zaman
+  Pzt, Sal, Çar, Per, Cum, Cmt — 0-5 arası satır indeksi doğrudan haftanın günü).
+- **Her ders oturumu**: renkli bir `<rect>` + hemen ardından aynı x/y/width/height'e
+  sahip, `fill="transparent"` olan ikinci bir `<rect>`, içinde 3 satırlık bir
+  `<title>`: `"KOD-SEC-NN-Ders Adı"` / `"Öğretmen1 / Öğretmen2"` (atanmamışsa "Staff")
+  / `"Derslik"` (uzaktan dersler için "UZAKTAN", bazen sondan boşluklu). Konum: rect'in
+  `x`'i hangi dönem sütununda başladığını, `width`'i kaç dönem sürdüğünü (örn.
+  427.5 = 2 dönem, 641.25 = 3 dönem) verir; `y`'si hangi gün satırında olduğunu verir.
+- Bu tek dosyada **22 ders oturumu** bulundu — tek bir sınıfın tam haftalık programı.
+
+**Karar:** Birincil (ve şu an için TEK desteklenen) ayrıştırma stratejisi bu SVG
+grid'ini okumak. Spesifikasyonun önerdiği "JSON önce dene, yoksa DOM tablosuna düş"
+sırası artık geçersiz — gerçek kayıtta ne JSON ne düz `<table>` var. Gerçek bir DOM
+`<table>` tabanlı örnek görülmediği için (belki eski bir edupage temasında olabilir)
+kör bir "tablo geri düşüşü" yazılmıyor; SVG grid'i bulunamazsa ayrıştırıcı net bir
+hata ile durur ("bu kaydın yapısı tanınmadı, geliştiriciyle iletişime geçin veya
+farklı bir görünümden tekrar kaydedin") — tahmin yürütmek, sessizce yanlış
+sınıf/oda okumaktan daha kötü.
+
+**Kapsam dışı kalan alanlar:** `faculty_code`, `program_name`, `class_year` tek bir
+sınıf görünümünden güvenilir çıkarılamıyor (sayfanın başlığı sadece "ACL 1" gibi kısa
+bir sınıf adı veriyor, yapısal olarak bölünebilir değil). v1'de bu üç alan boş
+bırakılıyor; içe aktarma ekranında kullanıcı isterse elle girebileceği bir form alanı
+olabilir (Faz 4 kapsamına dahil edilmedi, gerekirse hızlı eklenebilir).
+
 ## Açık sorular
 
-- edupage.org sayfasının gerçek JSON blob yapısı henüz görülmedi — Faz 4'te kullanıcıdan
-  gerçek bir kaydedilmiş HTML örneği istenecek (manuel adım, spesifikasyon §4.3).
+- ~~edupage.org sayfasının gerçek JSON blob yapısı henüz görülmedi~~ → **Karar (2026-09-04):**
+  Kullanıcı gerçek bir "Web Sayfası, Tamamı" kaydı sağladı ve gerçek yapı spesifikasyonun
+  varsaydığından TAMAMEN FARKLI çıktı. Bkz. aşağıdaki "edupage gerçek yapısı" bölümü —
+  JSON blok yok, veri bir SVG grafiği olarak render edilmiş ve metin olarak (JSON'dan
+  bile daha kolay) ayrıştırılabiliyor.
 - Sınav programının **birden fazla dönem içinde sütun sırası gerçekten değişiyor mu**
   sorusu hâlâ açık (yukarıdaki karşılaştırma tek dönem içindeydi). Faz 2'de birkaç eski
   dönemin sheet001.htm'i karşılaştırılıp gerçek bir "order-b" fixture'ı bulunabilirse
