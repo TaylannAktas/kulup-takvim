@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { formatDayNumber, isSameDay, isSameMonth, isWeekend } from "@/lib/calendar/date-utils";
 import { getEventStyle, type EventKind } from "@/lib/calendar/color-system";
 
@@ -8,23 +9,27 @@ type DayCellProps = {
   dominantKind: EventKind | null;
   /** Bu güne denk gelen ama hafta şeridi olarak değil hücre içinde gösterilecek satırlar (spec "+2 daha" taşması). */
   overflowCount: number;
+  href?: string;
+  selected?: boolean;
 };
 
-export function DayCell({ day, monthAnchor, today, dominantKind, overflowCount }: DayCellProps) {
+export function DayCell({ day, monthAnchor, today, dominantKind, overflowCount, href, selected }: DayCellProps) {
   const inCurrentMonth = isSameMonth(day, monthAnchor);
   const isToday = isSameDay(day, today);
   const weekend = isWeekend(day);
   const dominantStyle = dominantKind ? getEventStyle(dominantKind) : null;
 
-  return (
-    <div
-      className={[
-        "flex min-h-24 flex-col gap-1 border border-gray-200 p-1.5 dark:border-gray-800",
-        inCurrentMonth ? "bg-white dark:bg-gray-950" : "bg-gray-50 text-gray-400 dark:bg-gray-900 dark:text-gray-600",
-        weekend && inCurrentMonth ? "bg-gray-50/70 dark:bg-gray-900/40" : "",
-        inCurrentMonth && dominantStyle?.cellBackgroundClassName ? dominantStyle.cellBackgroundClassName : "",
-      ].join(" ")}
-    >
+  const className = [
+    "flex min-h-24 flex-col gap-1 border border-gray-200 p-1.5 dark:border-gray-800",
+    inCurrentMonth ? "bg-white dark:bg-gray-950" : "bg-gray-50 text-gray-400 dark:bg-gray-900 dark:text-gray-600",
+    weekend && inCurrentMonth ? "bg-gray-50/70 dark:bg-gray-900/40" : "",
+    inCurrentMonth && dominantStyle?.cellBackgroundClassName ? dominantStyle.cellBackgroundClassName : "",
+    href ? "cursor-pointer hover:ring-1 hover:ring-inset hover:ring-blue-400" : "",
+    selected ? "ring-2 ring-inset ring-blue-600" : "",
+  ].join(" ");
+
+  const content = (
+    <>
       <div className="flex items-center justify-between">
         <span
           className={[
@@ -41,9 +46,17 @@ export function DayCell({ day, monthAnchor, today, dominantKind, overflowCount }
         )}
       </div>
       <div className="mt-auto" />
-      {overflowCount > 0 && (
-        <span className="text-[10px] text-gray-500">+{overflowCount} daha</span>
-      )}
-    </div>
+      {overflowCount > 0 && <span className="text-[10px] text-gray-500">+{overflowCount} daha</span>}
+    </>
   );
+
+  if (href) {
+    return (
+      <Link href={href} scroll={false} className={className}>
+        {content}
+      </Link>
+    );
+  }
+
+  return <div className={className}>{content}</div>;
 }

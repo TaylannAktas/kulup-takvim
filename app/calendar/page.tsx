@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { MonthGrid } from "@/components/calendar/MonthGrid";
 import { BottomToolbar } from "@/components/calendar/BottomToolbar";
+import { DayDetailPanelContainer } from "@/components/calendar/DayDetailPanelContainer";
 import { SidebarAccordion } from "@/components/sidebar/SidebarAccordion";
 import { AcademicCalendarPanel } from "@/components/sidebar/AcademicCalendarPanel";
 import { ExamSchedulePanel } from "@/components/sidebar/ExamSchedulePanel";
@@ -13,10 +14,19 @@ import {
 } from "@/lib/calendar/date-utils";
 import { parseLayers } from "@/lib/calendar/layers";
 import { getMonthCalendarBars } from "@/lib/calendar/month-events";
+import { getDayDetail } from "@/lib/calendar/day-detail";
 
 type CalendarPageProps = {
-  searchParams: Promise<{ month?: string; layers?: string }>;
+  searchParams: Promise<{ month?: string; layers?: string; day?: string }>;
 };
+
+function parseDayParam(day: string | undefined): Date | null {
+  if (!day) return null;
+  const match = day.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const [, y, m, d] = match;
+  return new Date(Number(y), Number(m) - 1, Number(d));
+}
 
 function parseMonthParam(month: string | undefined): Date {
   if (month) {
@@ -34,14 +44,19 @@ function monthParam(date: Date): string {
 }
 
 export default async function CalendarPage({ searchParams }: CalendarPageProps) {
-  const { month, layers: layersParam } = await searchParams;
+  const { month, layers: layersParam, day: dayParam } = await searchParams;
   const monthAnchor = parseMonthParam(month);
   const activeLayers = parseLayers(new URLSearchParams(layersParam ? { layers: layersParam } : {}));
+  const selectedDay = parseDayParam(dayParam);
 
   const gridDays = getMonthGridDays(monthAnchor);
-  const bars = await getMonthCalendarBars(gridDays[0], gridDays[gridDays.length - 1], activeLayers);
+  const [bars, dayDetail] = await Promise.all([
+    getMonthCalendarBars(gridDays[0], gridDays[gridDays.length - 1], activeLayers),
+    selectedDay ? getDayDetail(selectedDay) : Promise.resolve(null),
+  ]);
 
   const layersSuffix = layersParam ? `&layers=${layersParam}` : "";
+  const dayHrefBase = `/calendar?month=${monthParam(monthAnchor)}${layersSuffix}`;
 
   return (
     <div className="flex h-screen flex-col">
@@ -84,10 +99,23 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
         </aside>
         <div className="flex flex-1 flex-col overflow-hidden">
           <div className="flex-1 overflow-auto">
-            <MonthGrid monthAnchor={monthAnchor} bars={bars} />
+            <MonthGrid
+              monthAnchor={monthAnchor}
+              bars={bars}
+              dayHrefBase={dayHrefBase}
+              selectedDayIso={dayParam}
+            />
           </div>
           <BottomToolbar activeLayers={activeLayers} />
         </div>
+        {selectedDay && dayDetail && (
+          <DayDetailPanelContainer
+            dateIso={selectedDay.toISOString()}
+            summaryText={dayDetail.summaryText}
+            items={dayDetail.items}
+            affectingAcademicEntries={dayDetail.affectingAcademicEntries}
+          />
+        )}
       </div>
     </div>
   );

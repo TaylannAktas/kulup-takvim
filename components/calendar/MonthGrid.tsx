@@ -12,7 +12,14 @@ const MAX_VISIBLE_LANES = 3;
 type MonthGridProps = {
   monthAnchor: Date;
   bars?: CalendarBarItem[];
+  /** Verilirse her gün hücresi bu temel URL'e `&day=YYYY-MM-DD` eklenmiş bir bağlantı olur. */
+  dayHrefBase?: string;
+  selectedDayIso?: string;
 };
+
+function dayIso(day: Date): string {
+  return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+}
 
 function chunkIntoWeeks(days: Date[]): Date[][] {
   const weeks: Date[][] = [];
@@ -26,7 +33,7 @@ function barCoversDay(bar: CalendarBarItem, day: Date): boolean {
   return bar.startDate <= day && day <= bar.endDate;
 }
 
-export function MonthGrid({ monthAnchor, bars = [] }: MonthGridProps) {
+export function MonthGrid({ monthAnchor, bars = [], dayHrefBase, selectedDayIso }: MonthGridProps) {
   const days = getMonthGridDays(monthAnchor);
   const today = todayInClubTime();
   const weeks = chunkIntoWeeks(days);
@@ -55,6 +62,7 @@ export function MonthGrid({ monthAnchor, bars = [] }: MonthGridProps) {
                 const coveringBars = bars.filter((bar) => barCoversDay(bar, day));
                 const visibleCoveringCount = visibleLanes.filter((l) => barCoversDay(l.bar, day)).length;
                 const overflow = coveringBars.length - visibleCoveringCount;
+                const iso = dayIso(day);
                 return (
                   <DayCell
                     key={day.toISOString()}
@@ -63,6 +71,8 @@ export function MonthGrid({ monthAnchor, bars = [] }: MonthGridProps) {
                     today={today}
                     dominantKind={dominantKind(coveringBars.map((b) => b.kind))}
                     overflowCount={Math.max(0, overflow)}
+                    href={dayHrefBase ? `${dayHrefBase}&day=${iso}` : undefined}
+                    selected={selectedDayIso === iso}
                   />
                 );
               })}
