@@ -84,6 +84,34 @@ Sınıf/Classroom | Tarih/Date | Başlangıç Saati/Start Time | Bitiş Saati/En
    gerekli, sadece "her fakülte farklı" varsayımıyla aşırı karmaşık bir eşleyici
    kurmaya gerek yok.
 
+### Sınav programı kazıyıcısı — kodlama sırasında çıkan ek bulgular (2026-09-04)
+Fixture'lar üzerinde çalışırken yukarıdaki analizde görünmeyen dört nokta çıktı:
+
+1. **Saat biçimi her zaman `HH:MM` değil.** Gerçek veride nokta ayraçlı saatler de
+   var (`CE 417-01` satırı: `13.30` / `16.00`). Aynı sınav farklı hash üretmesin diye
+   ayrıştırıcı `[:.]` ayracını kabul edip hepsini `HH:MM` biçimine normalleştiriyor.
+2. **Ders kodu bölme regex'i tireyi zorunlu tutmalı.** `CE 406` gibi sonu rakamla
+   biten kodlar var; gevşek bir desen bunu "CE 4" + "06" diye bölerdi. Tire yoksa
+   `section` boş bırakılıyor, ders kodundaki iç boşluk korunuyor (`CE 417-01` →
+   `CE 417` + `01`).
+3. **`source_hash` alan listesine `section` eklendi (spesifikasyondan sapma).**
+   Aynı dersin farklı şubeleri aynı gün, aynı saatte, aynı odada sınava giriyor
+   (`AE307-01/-02/-03`). Section hash'e girmezse Mühendislik güz arasınavında 298
+   satır 224'e düşüyor — 74 kayıt sessizce yutuluyor. Şube, kaydın kimliğinin parçası.
+4. **Keşif sayfasındaki URL desenleri tek tip değil.** `{donem}{tur}/{fakulte}`
+   dışında `{tur}{donem}/{fakulte}` sıralaması (`20232024arasinavbahar/muh`), sınav
+   türü içermeyen ders programı bağlantıları (`20252026guz/pilotaj`) ve eski/farklı
+   fakülte kısaltmaları (`muhendislik`, `müh`, `sbf`, `myosaglik`) var. **Karar:**
+   iki sıralama da aynı `termCode`'a indirgeniyor (`20232024bahar`); sınav türü
+   içermeyen bağlantılar ve spesifikasyonun kısaltma listesinde olmayan fakülteler
+   eleniyor (v1 kapsamı).
+
+**Kayıtlı elle sütun eşlemesi deseni (`source_column_mapping.source_url_pattern`):**
+önce tam URL (`https://dersprogramiyukle.atilim.edu.tr/20252026guzarasinav/muh`),
+bulunamazsa fakülte bazlı genel desen (`dersprogramiyukle.atilim.edu.tr/*/muh`)
+aranıyor. Gerekçe: bozukluk genelde tek bir dönem sayfasına özgü, ama bir fakülte
+şablonunu kalıcı olarak farklı tutuyorsa her dönem yeniden elle eşleme yapılmasın.
+
 ## Açık sorular
 
 - edupage.org sayfasının gerçek JSON blob yapısı henüz görülmedi — Faz 4'te kullanıcıdan
