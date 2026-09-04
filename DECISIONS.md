@@ -189,7 +189,9 @@ sayıya değil, **metne** dönüşmüş durumda:
   / `"Derslik"` (uzaktan dersler için "UZAKTAN", bazen sondan boşluklu). Konum: rect'in
   `x`'i hangi dönem sütununda başladığını, `width`'i kaç dönem sürdüğünü (örn.
   427.5 = 2 dönem, 641.25 = 3 dönem) verir; `y`'si hangi gün satırında olduğunu verir.
-- Bu tek dosyada **22 ders oturumu** bulundu — tek bir sınıfın tam haftalık programı.
+- Bu tek dosyada **21 ders oturumu** bulundu (ilk incelemede 22 sanılmıştı — dosyadaki
+  22. `<title>` aslında `<head><title>` sayfa başlığıydı, ders bloğu değil) — tek bir
+  sınıfın tam haftalık programı.
 
 **Karar:** Birincil (ve şu an için TEK desteklenen) ayrıştırma stratejisi bu SVG
 grid'ini okumak. Spesifikasyonun önerdiği "JSON önce dene, yoksa DOM tablosuna düş"
