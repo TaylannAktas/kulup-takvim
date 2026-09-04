@@ -3,6 +3,7 @@ import { MonthGrid } from "@/components/calendar/MonthGrid";
 import { BottomToolbar } from "@/components/calendar/BottomToolbar";
 import { SidebarAccordion } from "@/components/sidebar/SidebarAccordion";
 import { AcademicCalendarPanel } from "@/components/sidebar/AcademicCalendarPanel";
+import { ExamSchedulePanel } from "@/components/sidebar/ExamSchedulePanel";
 import { formatMonthTitle, nextMonth, previousMonth, todayInClubTime } from "@/lib/calendar/date-utils";
 import { parseLayers } from "@/lib/calendar/layers";
 
@@ -65,7 +66,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             <p className="py-4 text-center text-xs text-gray-400">Faz 4&apos;te eklenecek</p>
           </SidebarAccordion>
           <SidebarAccordion title="Sınav Programı">
-            <p className="py-4 text-center text-xs text-gray-400">Yakında</p>
+            <ExamSchedulePanel activeLayers={activeLayers} />
           </SidebarAccordion>
           <SidebarAccordion title="Akademik Takvim" defaultOpen>
             <AcademicCalendarPanel activeLayers={activeLayers} />
