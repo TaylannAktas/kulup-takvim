@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { MonthGrid } from "@/components/calendar/MonthGrid";
+import { BottomToolbar } from "@/components/calendar/BottomToolbar";
 import { SidebarAccordion } from "@/components/sidebar/SidebarAccordion";
 import { AcademicCalendarPanel } from "@/components/sidebar/AcademicCalendarPanel";
 import { formatMonthTitle, nextMonth, previousMonth, todayInClubTime } from "@/lib/calendar/date-utils";
@@ -70,8 +71,11 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             <AcademicCalendarPanel activeLayers={activeLayers} />
           </SidebarAccordion>
         </aside>
-        <div className="flex-1 overflow-auto">
-          <MonthGrid monthAnchor={monthAnchor} />
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex-1 overflow-auto">
+            <MonthGrid monthAnchor={monthAnchor} />
+          </div>
+          <BottomToolbar activeLayers={activeLayers} />
         </div>
       </div>
     </div>
