@@ -118,6 +118,40 @@ UTC+3 — bu yüzden "03:00 TR" = `0 0 * * *` (00:00 UTC), "03:15 TR" = `15 0 * 
 (00:15 UTC), yıl boyu değişmeden geçerli. İki cron job da Vercel Hobby planının
 sınırına tam oturuyor (plan free katmanda sınırlı sayıda cron destekliyor).
 
+### Çakışma tespiti — kategori, sınır ve saat dilimi kuralları (Faz 3)
+`club_events.conflict_flags` şekli spesifikasyondaki gibi
+`{exam: [], holiday: [], event: []}`; her giriş `{id, label, detail}`. Anahtarlar
+hiçbir zaman atlanmıyor (boş dizi yazılıyor) — arayüz doğrudan `.length` bakabilsin.
+
+1. **Akademik takvimin `SINAV` kayıtları `exam` dizisine yazılıyor** (`TATIL` →
+   `holiday`). Gerekçe: kullanıcı için anlam "bir sınav var/dönemi sürüyor";
+   kaydın hangi tablodan geldiği değil. `exam_sessions` tek tek oturumları
+   (AE111, 31 Ekim 15:30), akademik takvim ise geniş dönemleri ("Ara sınavlar",
+   5-16 Ocak) temsil ediyor, ikisi de aynı uyarı kutusuna ait.
+   `DERS_DONEMI`/`KAYIT`/`IDARI` çakışma üretmiyor — ders dönemi yılın çoğunu
+   kaplar, uyarı gürültüye dönüşürdü.
+2. **Sınırda dokunma çakışma sayılmıyor.** 16:00'da biten etkinlik 16:00'da
+   başlayan sınavla çakışmaz (kesin `<`/`>`). Tüm gün süren akademik takvim
+   kayıtlarında ise gün aralığı kapsayıcı (`<=`) — "1-5 Kasım tatili" 5 Kasım'ı
+   da içerir.
+3. **Saat dilimi:** duvar saatli kaynaklar (`exam_sessions`,
+   `academic_calendar_entries`) `fromClubTime` ile UTC anına yükseltiliyor, sonra
+   `club_events`'in timestamptz değerleriyle karşılaştırılıyor. Offset elle +3
+   varsayılmıyor, IANA veritabanına soruluyor (Türkiye 2016'dan beri sabit UTC+3,
+   ama 2016 öncesi arşiv verisi ve olası mevzuat değişikliği kendiliğinden doğru
+   çalışsın diye).
+4. **Sürücü tuzağı:** Postgres `date` sütunları (`mode: "date"`) neon
+   sürücüsünden *süreç yerel saatinin gece yarısı* olarak geliyor
+   ("2025-10-31" → UTC+3'te 2025-10-30T21:00Z). Yani takvim günü yerel
+   getter'larla okunmalı, UTC getter'larıyla değil. Tersi yönde — `date`
+   sütununa **yazarken** — Drizzle `toISOString()` çağırdığı için UTC gece
+   yarısı bir Date verilmeli, yoksa tarih bir gün geriye kayar
+   (bkz. `lib/calendar/day-notes.ts`).
+5. **Cron'un yeniden hesaplaması `updated_at`'e dokunmuyor.** O alan iyimser
+   kilit jetonu (§7.4); cron'un ilerletmesi, hiç kimse bir şey değiştirmediği
+   halde açık formların "bu kayıt siz düzenlerken değişti" hatası almasına yol
+   açardı. Sadece `conflict_flags` yazılıyor, o da JSON gerçekten değiştiyse.
+
 ## Açık sorular
 
 - edupage.org sayfasının gerçek JSON blob yapısı henüz görülmedi — Faz 4'te kullanıcıdan

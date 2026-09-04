@@ -45,5 +45,29 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ discovered: links.length, results });
+  return NextResponse.json({
+    discovered: links.length,
+    results,
+    conflictRecompute: await runConflictRecompute(),
+  });
+}
+
+/**
+ * Okul bir sınav tarihini değiştirdiğinde "dün sorunsuz olan etkinlik bugün
+ * uyarı gösteriyor" davranışı buradan doğuyor (spec §4.5). Senkron değişiklik
+ * üretmese bile ucuz ve idempotent olduğu için koşulsuz çalıştırılıyor.
+ *
+ * Yukarıdaki savunmacı desenle aynı: buradaki bir hata cron yanıtını
+ * çökertmemeli, sadece yanıta yazılmalı.
+ */
+async function runConflictRecompute() {
+  try {
+    const { recomputeAllActiveEventConflicts } = await import("@/lib/calendar/conflict-detection");
+    return { ok: true as const, ...(await recomputeAllActiveEventConflicts()) };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }

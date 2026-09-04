@@ -30,7 +30,28 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     current,
     next,
+    conflictRecompute: await runConflictRecompute(),
   });
+}
+
+/**
+ * Akademik takvim değiştiğinde (ör. bir tatil tarihi kaydı), daha önce sorunsuz
+ * görünen kulüp etkinlikleri artık çakışıyor olabilir — spec §4.5. Senkron
+ * sonuç üretmese bile ucuz ve idempotent olduğu için koşulsuz çalıştırılıyor.
+ *
+ * Buradaki hata ana cron yanıtını çökertmemeli: dosyanın geri kalanındaki
+ * savunmacı desenle aynı şekilde yakalanıp yanıta yazılıyor.
+ */
+async function runConflictRecompute() {
+  try {
+    const { recomputeAllActiveEventConflicts } = await import("@/lib/calendar/conflict-detection");
+    return { ok: true as const, ...(await recomputeAllActiveEventConflicts()) };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 function incrementAcademicYear(sourceYear: string): string {
