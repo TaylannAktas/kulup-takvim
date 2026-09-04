@@ -241,4 +241,10 @@ desenini biliyor (weekday 1-6, saatler); belirli tarih aralığındaki takvim gi
 `academic_calendar_entries` ve `exam_sessions` verileri sayfa tarafından önceden 
 filtrelenip "bu tarihler hariç tutulacak" şeklinde `overlap.ts`'ye geçirilebilir, 
 veya haftalık sonuçlar sayfa tarafından date-range kesiştirmesi ile post-processed 
-edilebilir — şimdilik ikisine de sahip değiliz.
+edilebilir — şimdilik ikisine de sahit değiliz.
+
+### PNG dışa aktarma (Spec §6.6) atlandı (Faz 5, 2026-09-04)
+Spesifikasyonun "yazdırılabilir... PNG görüntü" hedefi için bağımlılıksız DOM→PNG render 
+gerekir, bu da `html-to-image` gibi bir kütüphane talep eder. Minimal bağımlılık ilkesiyle 
+çelişir. Alternatif: `window.print()` + `@media print` CSS (Feature 2'de uygulandı) — 
+tarayıcı yazdırma iletişim kutusundan PDF olarak kaydediyor, aynı ihtiyacı karşılıyor.

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ViewSwitcher } from "./ViewSwitcher";
 import { LayersDropdown } from "./LayersDropdown";
+import { ExportDropdown } from "./ExportDropdown";
 
 type BottomToolbarProps = {
   activeLayers: Set<string>;
@@ -14,7 +15,7 @@ type BottomToolbarProps = {
  */
 export function BottomToolbar({ activeLayers, hrefSuffix, canEdit }: BottomToolbarProps) {
   return (
-    <div className="flex items-center justify-between border-t border-gray-200 p-2 dark:border-gray-800">
+    <div className="no-print flex items-center justify-between border-t border-gray-200 p-2 dark:border-gray-800">
       <ViewSwitcher />
       <div className="flex items-center gap-2">
         {canEdit ? (
@@ -51,14 +52,7 @@ export function BottomToolbar({ activeLayers, hrefSuffix, canEdit }: BottomToolb
           </>
         )}
         <LayersDropdown activeLayers={activeLayers} />
-        <button
-          type="button"
-          disabled
-          title="Yakında (Faz 5)"
-          className="cursor-not-allowed rounded border border-gray-300 px-3 py-1 text-sm text-gray-300 dark:border-gray-700 dark:text-gray-600"
-        >
-          Dışa aktar ▾
-        </button>
+        <ExportDropdown />
       </div>
     </div>
   );

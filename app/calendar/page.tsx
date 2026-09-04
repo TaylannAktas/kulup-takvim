@@ -106,7 +106,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
         </Link>
       </div>
       <div className="flex flex-1 overflow-hidden">
-        <aside className="flex w-80 shrink-0 flex-col overflow-hidden border-r border-gray-200 dark:border-gray-800">
+        <aside className="no-print flex w-80 shrink-0 flex-col overflow-hidden border-r border-gray-200 dark:border-gray-800">
           <SidebarAccordion title="Ders Programı">
             <CourseSchedulePanel />
           </SidebarAccordion>
