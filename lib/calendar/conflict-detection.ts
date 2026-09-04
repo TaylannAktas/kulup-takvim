@@ -6,6 +6,10 @@ import { db } from "@/lib/db";
 import { academicCalendarEntries, clubEvents, examSessions } from "@/lib/db/schema";
 import { toClubTime, fromClubTime } from "@/lib/calendar/date-utils";
 
+// Re-export client-safe types
+export type { ConflictEntry, ConflictFlags } from "@/lib/calendar/conflict-types";
+export { hasAnyConflict } from "@/lib/calendar/conflict-types";
+
 /**
  * Çakışma tespiti (spesifikasyon §4.5). Bir kulüp etkinliğinin zaman aralığı
  * sınav programı, akademik takvim ve diğer kulüp etkinlikleriyle karşılaştırılır;
@@ -58,27 +62,10 @@ import { toClubTime, fromClubTime } from "@/lib/calendar/date-utils";
  * çakışma üretmez — ders dönemi zaten yılın çoğunu kaplar, uyarı gürültüsü olur.
  */
 
-export type ConflictEntry = {
-  /** Çakışan kaydın kendi id'si (exam_sessions / academic_calendar_entries / club_events). */
-  id: string;
-  /** Kısa etiket — rozet/çip içinde gösterilebilecek uzunlukta. */
-  label: string;
-  /** İnsan okuyacak Türkçe açıklama parçası. */
-  detail: string;
-};
-
-export type ConflictFlags = {
-  exam: ConflictEntry[];
-  holiday: ConflictEntry[];
-  event: ConflictEntry[];
-};
+import type { ConflictFlags } from "@/lib/calendar/conflict-types";
 
 export function emptyConflictFlags(): ConflictFlags {
   return { exam: [], holiday: [], event: [] };
-}
-
-export function hasAnyConflict(flags: ConflictFlags): boolean {
-  return flags.exam.length > 0 || flags.holiday.length > 0 || flags.event.length > 0;
 }
 
 /* -------------------------------------------------------------------------- */

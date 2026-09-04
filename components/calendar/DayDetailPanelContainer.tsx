@@ -9,6 +9,8 @@ type DayDetailPanelContainerProps = {
   summaryText: string;
   items: TimelineItem[];
   affectingAcademicEntries: Array<{ id: string; description: string; category: string }>;
+  hrefSuffix: string;
+  canEdit: boolean;
 };
 
 /**
@@ -21,6 +23,8 @@ export function DayDetailPanelContainer({
   summaryText,
   items,
   affectingAcademicEntries,
+  hrefSuffix,
+  canEdit,
 }: DayDetailPanelContainerProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -31,6 +35,18 @@ export function DayDetailPanelContainer({
     router.push(`/calendar${params.toString() ? `?${params.toString()}` : ""}`, { scroll: false });
   }
 
+  function handleAddEvent() {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("newEvent", "1");
+    router.push(`/calendar?${params.toString()}`, { scroll: false });
+  }
+
+  function handleAddNote() {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("newNote", "1");
+    router.push(`/calendar?${params.toString()}`, { scroll: false });
+  }
+
   return (
     <DayDetailPanel
       date={new Date(dateIso)}
@@ -38,6 +54,8 @@ export function DayDetailPanelContainer({
       items={items}
       affectingAcademicEntries={affectingAcademicEntries}
       onClose={handleClose}
+      onAddEvent={canEdit ? handleAddEvent : undefined}
+      onAddNote={canEdit ? handleAddNote : undefined}
     />
   );
 }

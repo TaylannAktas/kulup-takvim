@@ -2,6 +2,8 @@ import Link from "next/link";
 import { MonthGrid } from "@/components/calendar/MonthGrid";
 import { BottomToolbar } from "@/components/calendar/BottomToolbar";
 import { DayDetailPanelContainer } from "@/components/calendar/DayDetailPanelContainer";
+import { EventModal } from "@/components/events/EventModal";
+import { DayNoteModal } from "@/components/notes/DayNoteModal";
 import { SidebarAccordion } from "@/components/sidebar/SidebarAccordion";
 import { AcademicCalendarPanel } from "@/components/sidebar/AcademicCalendarPanel";
 import { ExamSchedulePanel } from "@/components/sidebar/ExamSchedulePanel";
@@ -15,9 +17,17 @@ import {
 import { parseLayers } from "@/lib/calendar/layers";
 import { getMonthCalendarBars } from "@/lib/calendar/month-events";
 import { getDayDetail } from "@/lib/calendar/day-detail";
+import { auth } from "@/auth";
 
 type CalendarPageProps = {
-  searchParams: Promise<{ month?: string; layers?: string; day?: string }>;
+  searchParams: Promise<{
+    month?: string;
+    layers?: string;
+    day?: string;
+    newEvent?: string;
+    editEvent?: string;
+    newNote?: string;
+  }>;
 };
 
 function parseDayParam(day: string | undefined): Date | null {
@@ -44,7 +54,10 @@ function monthParam(date: Date): string {
 }
 
 export default async function CalendarPage({ searchParams }: CalendarPageProps) {
-  const { month, layers: layersParam, day: dayParam } = await searchParams;
+  const { month, layers: layersParam, day: dayParam, newEvent, editEvent, newNote } = await searchParams;
+  const session = await auth();
+  const canEdit = session?.user?.role === "admin" || session?.user?.role === "editor";
+
   const monthAnchor = parseMonthParam(month);
   const activeLayers = parseLayers(new URLSearchParams(layersParam ? { layers: layersParam } : {}));
   const selectedDay = parseDayParam(dayParam);
@@ -57,6 +70,12 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
 
   const layersSuffix = layersParam ? `&layers=${layersParam}` : "";
   const dayHrefBase = `/calendar?month=${monthParam(monthAnchor)}${layersSuffix}`;
+  const fullQueryString = new URLSearchParams({
+    ...(month && { month }),
+    ...(layersParam && { layers: layersParam }),
+    ...(dayParam && { day: dayParam }),
+  }).toString();
+  const hrefSuffix = fullQueryString ? `?${fullQueryString}` : "";
 
   return (
     <div className="flex h-screen flex-col">
@@ -106,7 +125,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
               selectedDayIso={dayParam}
             />
           </div>
-          <BottomToolbar activeLayers={activeLayers} />
+          <BottomToolbar activeLayers={activeLayers} hrefSuffix={hrefSuffix} canEdit={canEdit} />
         </div>
         {selectedDay && dayDetail && (
           <DayDetailPanelContainer
@@ -114,9 +133,18 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             summaryText={dayDetail.summaryText}
             items={dayDetail.items}
             affectingAcademicEntries={dayDetail.affectingAcademicEntries}
+            hrefSuffix={hrefSuffix}
+            canEdit={canEdit}
           />
         )}
       </div>
+
+      {/* Event modals */}
+      {newEvent && <EventModal mode="create" defaultDate={dayParam} canEdit={canEdit} />}
+      {editEvent && <EventModal mode="edit" eventId={editEvent} canEdit={canEdit} />}
+
+      {/* Day note modal */}
+      {newNote && <DayNoteModal date={dayParam || new Date().toISOString().split("T")[0]} canEdit={canEdit} />}
     </div>
   );
 }

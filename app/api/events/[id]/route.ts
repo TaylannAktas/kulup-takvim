@@ -11,6 +11,25 @@ export const dynamic = "force-dynamic";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
+/**
+ * GET /api/events/[id]
+ * Tek bir etkinliği id ile getirir. Tüm oturum açmış kullanıcılar erişebilir (okuma açık).
+ */
+export async function GET(_request: NextRequest, { params }: RouteContext) {
+  const session = await auth();
+  if (!session?.user) {
+    return new NextResponse(null, { status: 401 });
+  }
+
+  const { id } = await params;
+  const [event] = await db.select().from(clubEvents).where(eq(clubEvents.id, id));
+  if (!event) {
+    return new NextResponse(null, { status: 404 });
+  }
+
+  return NextResponse.json({ event });
+}
+
 const patchSchema = z
   .object({
     title: z.string().min(1).optional(),
