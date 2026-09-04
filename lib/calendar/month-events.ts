@@ -1,14 +1,17 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { eq, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { academicCalendarEntries, examSessions } from "@/lib/db/schema";
+import { academicCalendarEntries, examSessions, clubEvents } from "@/lib/db/schema";
 import {
   academicCalendarKindFromCategory,
   examTypeKind,
+  clubEventKindFromStatus,
   type EventKind,
 } from "@/lib/calendar/color-system";
 import { makeLayerId, isLayerActive } from "@/lib/calendar/layers";
 import { FACULTY_CODES } from "@/lib/scrapers/exam-schedule/fetch";
+import { toClubTime } from "@/lib/calendar/date-utils";
+import { hasAnyConflict, type ConflictFlags } from "@/lib/calendar/conflict-detection";
 
 export type CalendarBarItem = {
   id: string;
@@ -17,6 +20,8 @@ export type CalendarBarItem = {
   /** Dahil (inclusive), saat bilgisi olmadan gün bazlı. */
   startDate: Date;
   endDate: Date;
+  /** Çakışma rozeti gösterilsin mi (spec §6.5 "Çakışma uyarısı — kırmızı ünlem"). */
+  hasConflict?: boolean;
 };
 
 /** Hücre zemininin hangi türe göre tonlanacağını belirleyen öncelik sırası (spec §6.5). */
@@ -77,9 +82,10 @@ export async function getMonthCalendarBars(
     isLayerActive(activeLayers, makeLayerId("exam-type", type))
   );
 
-  const [academicRows, examRows] = await Promise.all([
+  const [academicRows, examRows, eventRows] = await Promise.all([
     db.select().from(academicCalendarEntries).where(eq(academicCalendarEntries.isActive, true)),
     db.select().from(examSessions).where(eq(examSessions.isActive, true)),
+    db.select().from(clubEvents).where(ne(clubEvents.status, "iptal")),
   ]);
 
   const bars: CalendarBarItem[] = [];
@@ -123,6 +129,28 @@ export async function getMonthCalendarBars(
       kind: examTypeKind(row.examType),
       startDate: date,
       endDate: date,
+    });
+  }
+
+  // Kulüp etkinlikleri sol panelde bir katmanı yok — sidebar filtrelerinden
+  // bağımsız olarak her zaman gösterilir (iptal edilenler hariç).
+  for (const row of eventRows) {
+    // startAt/endAt UTC anları; ay ızgarası Europe/Istanbul takvim gününe
+    // göre çizildiği için gösterim öncesi yerel duvar saatine çevriliyor.
+    const eventStart = toDateOnly(toClubTime(row.startAt));
+    const eventEnd = toDateOnly(toClubTime(row.endAt));
+
+    const clippedStart = eventStart < start ? start : eventStart;
+    const clippedEnd = eventEnd > end ? end : eventEnd;
+    if (clippedStart > clippedEnd) continue;
+
+    bars.push({
+      id: `event:${row.id}`,
+      label: row.title,
+      kind: clubEventKindFromStatus(row.status),
+      startDate: clippedStart,
+      endDate: clippedEnd,
+      hasConflict: hasAnyConflict((row.conflictFlags as ConflictFlags | null) ?? { exam: [], holiday: [], event: [] }),
     });
   }
 

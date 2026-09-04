@@ -92,10 +92,11 @@ export function MonthGrid({ monthAnchor, bars = [], dayHrefBase, selectedDayIso 
                           gridColumnEnd: endCol + 2,
                           gridRow: lane + 1,
                         }}
-                        title={`${style.label}: ${bar.label}`}
+                        title={`${style.label}: ${bar.label}${bar.hasConflict ? " — çakışma var" : ""}`}
                       >
                         <span className="mr-0.5">{style.icon}</span>
                         {bar.label}
+                        {bar.hasConflict && <span className="ml-0.5 font-bold text-red-600">!</span>}
                       </div>
                     );
                   })}
