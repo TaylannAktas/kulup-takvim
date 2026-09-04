@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { MonthGrid } from "@/components/calendar/MonthGrid";
+import { SidebarAccordion } from "@/components/sidebar/SidebarAccordion";
+import { AcademicCalendarPanel } from "@/components/sidebar/AcademicCalendarPanel";
 import { formatMonthTitle, nextMonth, previousMonth, todayInClubTime } from "@/lib/calendar/date-utils";
+import { parseLayers } from "@/lib/calendar/layers";
 
 type CalendarPageProps = {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ month?: string; layers?: string }>;
 };
 
 function parseMonthParam(month: string | undefined): Date {
@@ -22,15 +25,18 @@ function monthParam(date: Date): string {
 }
 
 export default async function CalendarPage({ searchParams }: CalendarPageProps) {
-  const { month } = await searchParams;
+  const { month, layers: layersParam } = await searchParams;
   const monthAnchor = parseMonthParam(month);
+  const activeLayers = parseLayers(new URLSearchParams(layersParam ? { layers: layersParam } : {}));
+
+  const layersSuffix = layersParam ? `&layers=${layersParam}` : "";
 
   return (
     <div className="flex h-screen flex-col">
       <div className="flex items-center justify-between border-b border-gray-200 p-3 dark:border-gray-800">
         <div className="flex items-center gap-3">
           <Link
-            href={`/calendar?month=${monthParam(previousMonth(monthAnchor))}`}
+            href={`/calendar?month=${monthParam(previousMonth(monthAnchor))}${layersSuffix}`}
             className="rounded px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-800"
           >
             ◀
@@ -39,18 +45,34 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             {formatMonthTitle(monthAnchor)}
           </h1>
           <Link
-            href={`/calendar?month=${monthParam(nextMonth(monthAnchor))}`}
+            href={`/calendar?month=${monthParam(nextMonth(monthAnchor))}${layersSuffix}`}
             className="rounded px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-800"
           >
             ▶
           </Link>
         </div>
-        <Link href="/calendar" className="rounded border border-gray-300 px-3 py-1 text-sm dark:border-gray-700">
+        <Link
+          href={`/calendar${layersParam ? `?layers=${layersParam}` : ""}`}
+          className="rounded border border-gray-300 px-3 py-1 text-sm dark:border-gray-700"
+        >
           Bugün
         </Link>
       </div>
-      <div className="flex-1 overflow-auto">
-        <MonthGrid monthAnchor={monthAnchor} />
+      <div className="flex flex-1 overflow-hidden">
+        <aside className="flex w-80 shrink-0 flex-col overflow-hidden border-r border-gray-200 dark:border-gray-800">
+          <SidebarAccordion title="Ders Programı">
+            <p className="py-4 text-center text-xs text-gray-400">Faz 4&apos;te eklenecek</p>
+          </SidebarAccordion>
+          <SidebarAccordion title="Sınav Programı">
+            <p className="py-4 text-center text-xs text-gray-400">Yakında</p>
+          </SidebarAccordion>
+          <SidebarAccordion title="Akademik Takvim" defaultOpen>
+            <AcademicCalendarPanel activeLayers={activeLayers} />
+          </SidebarAccordion>
+        </aside>
+        <div className="flex-1 overflow-auto">
+          <MonthGrid monthAnchor={monthAnchor} />
+        </div>
       </div>
     </div>
   );
