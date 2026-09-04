@@ -112,6 +112,12 @@ bulunamazsa fakülte bazlı genel desen (`dersprogramiyukle.atilim.edu.tr/*/muh`
 aranıyor. Gerekçe: bozukluk genelde tek bir dönem sayfasına özgü, ama bir fakülte
 şablonunu kalıcı olarak farklı tutuyorsa her dönem yeniden elle eşleme yapılmasın.
 
+### Vercel Cron zamanlaması (2026-09-04)
+`vercel.json`'daki cron ifadeleri **UTC**'ye göre. Türkiye DST uygulamıyor, sabit
+UTC+3 — bu yüzden "03:00 TR" = `0 0 * * *` (00:00 UTC), "03:15 TR" = `15 0 * * *`
+(00:15 UTC), yıl boyu değişmeden geçerli. İki cron job da Vercel Hobby planının
+sınırına tam oturuyor (plan free katmanda sınırlı sayıda cron destekliyor).
+
 ## Açık sorular
 
 - edupage.org sayfasının gerçek JSON blob yapısı henüz görülmedi — Faz 4'te kullanıcıdan

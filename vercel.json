@@ -1,0 +1,6 @@
+{
+  "crons": [
+    { "path": "/api/cron/sync-academic-calendar", "schedule": "0 0 * * *" },
+    { "path": "/api/cron/sync-exam-schedule", "schedule": "15 0 * * *" }
+  ]
+}
