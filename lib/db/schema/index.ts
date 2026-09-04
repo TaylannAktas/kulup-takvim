@@ -6,6 +6,7 @@ export * from "./course-sessions";
 export * from "./day-notes";
 export * from "./exam-sessions";
 export * from "./members";
+export * from "./rate-limits";
 export * from "./rooms";
 export * from "./sync";
 export * from "./users";
