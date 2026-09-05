@@ -208,6 +208,37 @@ bir sınıf adı veriyor, yapısal olarak bölünebilir değil). v1'de bu üç a
 bırakılıyor; içe aktarma ekranında kullanıcı isterse elle girebileceği bir form alanı
 olabilir (Faz 4 kapsamına dahil edilmedi, gerekirse hızlı eklenebilir).
 
+### Sınav programı kazıyıcısı — canlı ortamda bulunan gerçek hata (2026-09-05)
+Faz 0 tamamlanıp gerçek bir Neon veritabanına karşı ilk kez canlı senkron
+çalıştırıldığında sınav programı senkronunun **120/120 kaynağının tamamı**
+başarısız çıktı — halbuki Faz 2'deki 29 test hepsi geçiyordu. Sebep: testler
+sadece saf ayrıştırma fonksiyonlarını (fixture'lara karşı) kontrol ediyordu,
+gerçek ağ isteği + yönlendirme etkileşimini hiç test etmiyordu — bu, testlerin
+kapsamındaki gerçek bir boşluktu.
+
+Gerçek hata: kaynağın kök URL'i **301 ile, sonunda `/` olan bir adrese**
+yönlendiriyor (örn. `.../20252026guzarasinav/servis` → `.../servis/`).
+`fetchExamScheduleFrameset`, frame'in relatif `src`'ini (`index_files/sheet001.htm`)
+YÖNLENDİRME ÖNCESİKİ orijinal URL'e göre çözüyordu. URL çözümleme kuralı
+gereği, temel URL'de sondaki segmentten sonra `/` yoksa o segment relatif yol
+tarafından **değiştiriliyor** — yani `servis` sessizce düşüyor ve sonuç
+`.../20252026guzarasinav/index_files/sheet001.htm` gibi yanlış (fakülte
+segmentsiz) bir URL oluyor, kaynak sitede 404 dönüyor.
+
+**Düzeltme:** `lib/scrapers/shared/http-client.ts`'e `fetchHtmlWithFinalUrl`
+eklendi — `fetch()`'in `redirect:"follow"` sonrası gerçek nihai URL'ini
+(`response.url`) da döndürüyor. `fetchExamScheduleFrameset` artık relatif
+frame src'ini bu nihai URL'e göre çözüyor. Gerçek siteye karşı doğrulandı:
+düzeltmeden önce 120/120 "hata", sonra 77/120 "ok" (8.641 sınav kaydı),
+43/120 "needs_mapping" (hepsi 2022-2023/2023-2024 gibi eski dönemler — farklı
+Excel şablonu, sistemin tahmin yürütmeden elle eşlemeye düşmesi beklenen/doğru
+davranış), 0 "hata".
+
+**Ders çıkarımı:** Bir kazıyıcının saf ayrıştırma fonksiyonları test edilmiş
+olması, ağ+yönlendirme etkileşimini de test ettiği anlamına gelmiyor. Gerçek
+bir 301/302 yönlendirmesi olan her kaynak için, relatif bağlantı çözümlemesinin
+orijinal URL'e göre mi yoksa nihai URL'e göre mi yapıldığı ayrıca doğrulanmalı.
+
 ## Açık sorular
 
 - ~~edupage.org sayfasının gerçek JSON blob yapısı henüz görülmedi~~ → **Karar (2026-09-04):**

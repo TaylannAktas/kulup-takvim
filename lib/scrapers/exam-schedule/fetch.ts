@@ -20,7 +20,7 @@
  */
 import "server-only";
 import { load } from "cheerio";
-import { fetchHtml, resolveUrl } from "@/lib/scrapers/shared/http-client";
+import { fetchHtml, fetchHtmlWithFinalUrl, resolveUrl } from "@/lib/scrapers/shared/http-client";
 
 export const EXAM_SCHEDULE_INDEX_URL = "https://www.atilim.edu.tr/tr/dersprogrami";
 
@@ -89,11 +89,20 @@ export function findSheetFrameSrc(html: string): string | null {
 /**
  * Kök URL'i indirir, `frSheet` çerçevesini çözer ve asıl veri sayfasını indirir.
  * İki ağ isteği yapar (`fetchHtml` istekler arasında zaten gecikme uyguluyor).
+ *
+ * DİKKAT: kök URL 301 ile yönlendiriliyor ve yönlendirme hedefi sonunda `/`
+ * içeriyor (örn. `.../20252026guzarasinav/muh` -> `.../muh/`). Frame'in
+ * relatif `src`'ini ORİJİNAL `rootUrl`'e göre çözmek, temel URL'de son
+ * segmentten sonra `/` olmadığı için o segmenti (`muh`) düşürüyor — sonuç
+ * `.../20252026guzarasinav/index_files/sheet001.htm` gibi yanlış (fakülte
+ * segmentsiz) bir URL oluyor ve 404 veriyor. Bu, canlıda tüm sınav programı
+ * senkronunu (120/120) sessizce başarısız kılan gerçek bir hataydı — çözüm:
+ * relatif bağlantıyı YÖNLENDİRME SONRASI nihai URL'e göre çöz.
  */
 export async function fetchExamScheduleFrameset(
   rootUrl: string
 ): Promise<{ sheetHtml: string; sheetUrl: string }> {
-  const rootHtml = await fetchHtml(rootUrl);
+  const { html: rootHtml, finalUrl: rootFinalUrl } = await fetchHtmlWithFinalUrl(rootUrl);
   const frameSrc = findSheetFrameSrc(rootHtml);
 
   if (!frameSrc) {
@@ -102,7 +111,7 @@ export async function fetchExamScheduleFrameset(
     );
   }
 
-  const sheetUrl = resolveUrl(rootUrl, frameSrc);
+  const sheetUrl = resolveUrl(rootFinalUrl, frameSrc);
   const sheetHtml = await fetchHtml(sheetUrl);
   return { sheetHtml, sheetUrl };
 }

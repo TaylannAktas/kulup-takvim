@@ -25,11 +25,16 @@ async function throttle(): Promise<void> {
  * Tek uçuşlu (single-flight), gecikmeli, özel User-Agent'lı GET isteği.
  * Kazıyıcı etiği gereği (spesifikasyon §8): istekler arasında gecikme olmalı ve
  * aynı anda birden fazla kazıma isteği gönderilmemeli.
+ *
+ * Sonucu hem metin hem de (yönlendirmeler sonrası) nihai URL olarak döner —
+ * sayfadaki relatif bağlantılar bu nihai URL'e göre çözülmeli, isteğin
+ * ORİJİNAL URL'ine göre değil (bkz. `resolveUrl` kullanan çağıranlar ve
+ * DECISIONS.md'deki "301 sonrası eğik çizgi" bulgusu).
  */
-export async function fetchHtml(
+async function fetchHtmlInternal(
   url: string,
   init?: Omit<RequestInit, "headers">
-): Promise<string> {
+): Promise<{ html: string; finalUrl: string }> {
   const run = inFlight.then(async () => {
     await throttle();
     const response = await fetch(url, {
@@ -40,11 +45,34 @@ export async function fetchHtml(
     if (!response.ok) {
       throw new Error(`Kazıma isteği başarısız: ${url} -> HTTP ${response.status}`);
     }
-    return response.text();
+    const html = await response.text();
+    return { html, finalUrl: response.url };
   });
 
   inFlight = run.catch(() => undefined);
   return run;
+}
+
+export async function fetchHtml(
+  url: string,
+  init?: Omit<RequestInit, "headers">
+): Promise<string> {
+  const { html } = await fetchHtmlInternal(url, init);
+  return html;
+}
+
+/**
+ * `fetchHtml` ile aynı, ama yönlendirmeler sonrası nihai URL'i de döner.
+ * Bir sayfadaki relatif bağlantıyı (ör. bir frame'in `src`'i) çözmeden önce
+ * kök URL 301/302 ile yönlendirilmişse ve hedef URL sonunda `/` varsa
+ * (örn. `.../servis` -> `.../servis/`), orijinal URL'e göre çözmek son yol
+ * parçasını (`servis`) yanlışlıkla düşürür — bkz. DECISIONS.md.
+ */
+export async function fetchHtmlWithFinalUrl(
+  url: string,
+  init?: Omit<RequestInit, "headers">
+): Promise<{ html: string; finalUrl: string }> {
+  return fetchHtmlInternal(url, init);
 }
 
 /**
