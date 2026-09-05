@@ -86,7 +86,7 @@ export function TimetableUploadForm() {
             accept=".htm,.html"
             onChange={(e) => setFile(e.target.files?.[0] || null)}
             disabled={loading}
-            className="block w-full text-sm file:mr-3 file:cursor-pointer file:rounded file:border-0 file:bg-blue-600 file:px-3 file:py-1.5 file:text-white file:disabled:opacity-40"
+            className="block w-full text-sm file:mr-3 file:cursor-pointer file:rounded file:border-0 file:bg-blue-600 file:px-3 file:py-1.5 file:text-white disabled:opacity-40"
           />
         </div>
 
