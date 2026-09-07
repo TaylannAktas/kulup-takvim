@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { EventForm } from "./EventForm";
+import { EventForm, type EventFormValues, type ClubEventRecord } from "./EventForm";
 import { ConflictBadge } from "./ConflictBadge";
 import { hasAnyConflict, type ConflictFlags } from "@/lib/calendar/conflict-types";
 import { fromClubTime } from "@/lib/calendar/date-utils";
@@ -41,9 +41,17 @@ export function EventModal({ mode, eventId, defaultDate, canEdit }: EventModalPr
   const router = useRouter();
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(mode === "edit");
-  const [eventData, setEventData] = useState<any | null>(null);
+  const [eventData, setEventData] = useState<ClubEventRecord | null>(null);
   const [showConflictConfirm, setShowConflictConfirm] = useState(false);
   const [lastSavedConflicts, setLastSavedConflicts] = useState<ConflictFlags | null>(null);
+
+  const handleClose = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("newEvent");
+    params.delete("editEvent");
+    router.push(`/calendar${params.toString() ? `?${params.toString()}` : ""}`, { scroll: false });
+    router.refresh();
+  }, [searchParams, router]);
 
   // Edit modunda veriyi yükle
   useEffect(() => {
@@ -72,22 +80,18 @@ export function EventModal({ mode, eventId, defaultDate, canEdit }: EventModalPr
     return () => {
       isMounted = false;
     };
-  }, [mode, eventId]);
+  }, [mode, eventId, handleClose]);
 
-  function handleClose() {
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("newEvent");
-    params.delete("editEvent");
-    router.push(`/calendar${params.toString() ? `?${params.toString()}` : ""}`, { scroll: false });
-    router.refresh();
-  }
-
-  async function handleSubmit(values: any): Promise<{ ok: true; event: any } | { ok: false; error: string }> {
+  async function handleSubmit(
+    values: EventFormValues
+  ): Promise<{ ok: true; event: ClubEventRecord } | { ok: false; error: string }> {
     try {
       const url = mode === "create" ? "/api/events" : `/api/events/${eventId}`;
       const method = mode === "create" ? "POST" : "PATCH";
 
-      const payload = mode === "create" ? values : { ...values, expectedUpdatedAt: eventData.updatedAt };
+      // Edit modunda form sadece eventData yüklendikten sonra render edilir
+      // (aşağıdaki `loading` erken dönüşü), o yüzden burada her zaman dolu.
+      const payload = mode === "create" ? values : { ...values, expectedUpdatedAt: eventData!.updatedAt };
 
       const res = await fetch(url, {
         method,
@@ -172,14 +176,14 @@ export function EventModal({ mode, eventId, defaultDate, canEdit }: EventModalPr
     mode === "edit" && eventData
       ? {
           title: eventData.title,
-          description: eventData.description,
+          description: eventData.description ?? undefined,
           startAt: eventData.startAt,
           endAt: eventData.endAt,
           isAllDay: eventData.isAllDay,
           status: eventData.status,
-          location: eventData.location,
-          expectedAttendance: eventData.expectedAttendance,
-          colorOverride: eventData.colorOverride,
+          location: eventData.location ?? undefined,
+          expectedAttendance: eventData.expectedAttendance ?? undefined,
+          colorOverride: eventData.colorOverride ?? undefined,
         }
       : mode === "create"
         ? {

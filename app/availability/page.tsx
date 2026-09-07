@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AvailabilityHeatmap } from "@/components/availability/AvailabilityHeatmap";
 import {
@@ -14,7 +14,6 @@ import {
 type AudienceType = "uye" | "hedef_kitle" | "both";
 
 const WEEKDAY_NAMES = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"];
-const WEEKDAY_SHORTS = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt"];
 
 /**
  * Find the next date on or after today that matches the given ISO weekday (1-7, Mon-Sun).
@@ -75,11 +74,6 @@ export default function AvailabilityPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
-  const [bestWindows, setBestWindows] = useState<
-    Array<{ weekday: number; startMinutes: number; endMinutes: number; averageFreeRatio: number }>
-  >([]);
-
   // Fetch data on mount
   useEffect(() => {
     async function fetchData() {
@@ -108,54 +102,31 @@ export default function AvailabilityPage() {
     fetchData();
   }, []);
 
-  // Recompute availability when filters or data change
-  useEffect(() => {
-    if (membersFull.length === 0) {
-      setSlots([]);
-      setBestWindows([]);
-      return;
-    }
+  // Uygunluk, seçilen filtre/verinin SAF bir türevi — ayrı bir state +
+  // efekt yerine (react-hooks/set-state-in-effect, "you might not need an
+  // effect") doğrudan render sırasında hesaplanıyor.
+  const filteredMembers = useMemo<AvailabilityMember[]>(() => {
+    const filtered = audience === "both" ? membersFull : membersFull.filter((m) => m.category === audience);
+    return filtered.map((m) => ({ id: m.id, displayName: m.displayName, courseCodes: m.courseCodes }));
+  }, [membersFull, audience]);
 
-    // Filter members by audience
-    const filtered =
-      audience === "both"
-        ? membersFull
-        : membersFull.filter((m) => m.category === audience);
-
-    // Convert to AvailabilityMember format
-    const filteredMembers: AvailabilityMember[] = filtered.map((m) => ({
-      id: m.id,
-      displayName: m.displayName,
-      courseCodes: m.courseCodes,
-    }));
-
-    if (filteredMembers.length === 0) {
-      setSlots([]);
-      setBestWindows([]);
-      return;
-    }
-
-    // Parse day start/end
+  const slots = useMemo<AvailabilitySlot[]>(() => {
+    if (filteredMembers.length === 0) return [];
     const [startH, startM] = dayStart.split(":").map(Number);
     const [endH, endM] = dayEnd.split(":").map(Number);
-    const dayStartMinutes = startH * 60 + startM;
-    const dayEndMinutes = endH * 60 + endM;
-
-    // Compute availability
-    const computed = computeWeeklyAvailability({
+    return computeWeeklyAvailability({
       members: filteredMembers,
       sessions,
-      dayStartMinutes,
-      dayEndMinutes,
+      dayStartMinutes: startH * 60 + startM,
+      dayEndMinutes: endH * 60 + endM,
       slotMinutes: 30,
     });
+  }, [filteredMembers, sessions, dayStart, dayEnd]);
 
-    setSlots(computed);
-
-    // Find best windows
-    const windows = findBestWindows(computed, duration, 30, 10);
-    setBestWindows(windows);
-  }, [membersFull, sessions, audience, dayStart, dayEnd, duration]);
+  const bestWindows = useMemo(
+    () => (filteredMembers.length === 0 ? [] : findBestWindows(slots, duration, 30, 10)),
+    [slots, duration, filteredMembers.length]
+  );
 
   if (loading) {
     return (

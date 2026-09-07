@@ -21,7 +21,7 @@ export async function importTimetable(params: {
   sourceLabel: string;
   termCode?: string;
 }): Promise<{ importId: string; parsedSessionCount: number; warnings: string[] }> {
-  const { rows, warnings } = parseEdupageTimetableSvg(params.html);
+  const { rows, warnings, periods } = parseEdupageTimetableSvg(params.html);
 
   const [created] = await db
     .insert(timetableImports)
@@ -31,6 +31,7 @@ export async function importTimetable(params: {
       termCode: params.termCode ?? null,
       parsedSessionCount: rows.length,
       notes: warnings.length > 0 ? warnings.join("\n") : null,
+      periods: periods.length > 0 ? periods : null,
     })
     .returning();
 

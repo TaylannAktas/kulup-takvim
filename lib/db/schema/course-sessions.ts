@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, time } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, time, jsonb } from "drizzle-orm/pg-core";
 import { users } from "./users";
 
 export const timetableImports = pgTable("timetable_imports", {
@@ -9,6 +9,14 @@ export const timetableImports = pgTable("timetable_imports", {
   termCode: text("term_code"),
   parsedSessionCount: integer("parsed_session_count"),
   notes: text("notes"),
+  /**
+   * Bu sayfadaki dönem (saat) sütunları — `ParsedPeriod[]` JSON'u (bkz.
+   * lib/timetable-import/parse-svg-timetable.ts). Gün ayrıntı çizelgesini
+   * okulun sitesindeki gibi ders saatlerine bölebilmek için (2026-09-07).
+   * Bu sütun eklenmeden önce yapılmış içe aktarmalarda null olur — çizelge
+   * bu durumda genel saat ızgarasına düşer (bkz. HourlyTimeline).
+   */
+  periods: jsonb("periods"),
 });
 
 export const courseSessions = pgTable("course_sessions", {

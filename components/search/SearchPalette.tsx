@@ -26,7 +26,19 @@ export function SearchPalette() {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        setOpen((o) => !o);
+        // Açılış anındaki state sıfırlama, ayrı bir effect'te `open`
+        // değişimini izlemek yerine (react-hooks/set-state-in-effect) doğrudan
+        // tek açılış noktasında yapılıyor — bu tuş kısayolu `open`'ı true
+        // yapan TEK yer.
+        setOpen((prevOpen) => {
+          const next = !prevOpen;
+          if (next) {
+            setQuery("");
+            setResults([]);
+            setActiveIndex(0);
+          }
+          return next;
+        });
       } else if (e.key === "Escape") {
         setOpen(false);
       }
@@ -35,21 +47,19 @@ export function SearchPalette() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // Saf bir DOM yan etkisi (odaklanma) — setState çağırmıyor, bu yüzden
+  // yukarıdaki gibi bir sorun teşkil etmiyor.
   useEffect(() => {
     if (open) {
-      setQuery("");
-      setResults([]);
-      setActiveIndex(0);
-      // Modal DOM'a girdikten hemen sonra odaklan.
       setTimeout(() => inputRef.current?.focus(), 0);
     }
   }, [open]);
 
   useEffect(() => {
-    if (query.trim().length < 2) {
-      setResults([]);
-      return;
-    }
+    // Sorgu 2 karakterden kısaysa hiçbir şey (setState dahil) yapmadan çık —
+    // render tarafı `visibleResults` ile zaten bunu ayrıca kontrol ediyor,
+    // burada `results`'ı temizlemeye gerek yok.
+    if (query.trim().length < 2) return;
     const controller = new AbortController();
     const timeout = setTimeout(async () => {
       try {
@@ -71,6 +81,10 @@ export function SearchPalette() {
     };
   }, [query]);
 
+  // Sorgu 2 karakterden kısayken `results`'taki eski veriyi göstermemek için
+  // render'a giden liste burada süzülüyor (bkz. yukarıdaki effect yorumu).
+  const visibleResults = query.trim().length >= 2 ? results : [];
+
   function goToResult(result: SearchResultItem) {
     setOpen(false);
     router.push(`/calendar?month=${result.month}&day=${result.day}`);
@@ -79,12 +93,12 @@ export function SearchPalette() {
   function handleInputKeyDown(e: React.KeyboardEvent) {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setActiveIndex((i) => Math.min(i + 1, results.length - 1));
+      setActiveIndex((i) => Math.min(i + 1, visibleResults.length - 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setActiveIndex((i) => Math.max(i - 1, 0));
-    } else if (e.key === "Enter" && results[activeIndex]) {
-      goToResult(results[activeIndex]);
+    } else if (e.key === "Enter" && visibleResults[activeIndex]) {
+      goToResult(visibleResults[activeIndex]);
     }
   }
 
@@ -109,7 +123,7 @@ export function SearchPalette() {
           className="w-full border-b border-gray-200 px-4 py-3 text-sm outline-none dark:border-gray-800 dark:bg-gray-900"
         />
         <ul className="max-h-80 overflow-y-auto">
-          {results.map((result, index) => (
+          {visibleResults.map((result, index) => (
             <li key={`${result.type}-${result.id}`}>
               <button
                 type="button"
@@ -125,7 +139,7 @@ export function SearchPalette() {
               </button>
             </li>
           ))}
-          {query.trim().length >= 2 && results.length === 0 && (
+          {query.trim().length >= 2 && visibleResults.length === 0 && (
             <li className="px-4 py-6 text-center text-xs text-gray-400">Sonuç yok</li>
           )}
           {query.trim().length < 2 && (

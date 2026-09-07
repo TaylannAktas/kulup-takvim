@@ -44,7 +44,7 @@ export default async function SyncRunsAdminPage() {
       <div>
         <h1 className="text-lg font-semibold">Senkron Geçmişi</h1>
         <p className="text-sm text-gray-500">
-          Cron ve manuel tetiklemelerin çalışma kaydı. "Elle eşleme gerekiyor" durumundaki
+          Cron ve manuel tetiklemelerin çalışma kaydı. &quot;Elle eşleme gerekiyor&quot; durumundaki
           sınav programı kaynakları için{" "}
           <a href="/admin/column-mapping" className="underline">
             sütun eşleme ekranını

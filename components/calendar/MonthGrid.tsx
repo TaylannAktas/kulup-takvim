@@ -1,6 +1,6 @@
 import { DayCell } from "./DayCell";
 import { getMonthGridDays, todayInClubTime } from "@/lib/calendar/date-utils";
-import { dominantKind, type CalendarBarItem } from "@/lib/calendar/month-events";
+import { dominantKind, type CalendarBarItem, type AcademicEdge } from "@/lib/calendar/month-events";
 import { getEventStyle } from "@/lib/calendar/color-system";
 import { assignWeekBarLanes } from "@/lib/calendar/week-bar-layout";
 
@@ -12,6 +12,12 @@ const MAX_VISIBLE_LANES = 3;
 type MonthGridProps = {
   monthAnchor: Date;
   bars?: CalendarBarItem[];
+  /** Gün → başlangıç/bitiş çerçeve rengi (bkz. getMonthCalendarBars). */
+  academicEdges?: Map<string, AcademicEdge>;
+  /** Notu olan günlerin "YYYY-MM-DD" kümesi — hücrenin sağ üst köşesindeki işaret için. */
+  noteDates?: Set<string>;
+  /** Isı haritası katmanı açık mı (varsayılan kapalı) — bkz. DayCell. */
+  heatmapOn?: boolean;
   /** Verilirse her gün hücresi bu temel URL'e `&day=YYYY-MM-DD` eklenmiş bir bağlantı olur. */
   dayHrefBase?: string;
   selectedDayIso?: string;
@@ -33,7 +39,15 @@ function barCoversDay(bar: CalendarBarItem, day: Date): boolean {
   return bar.startDate <= day && day <= bar.endDate;
 }
 
-export function MonthGrid({ monthAnchor, bars = [], dayHrefBase, selectedDayIso }: MonthGridProps) {
+export function MonthGrid({
+  monthAnchor,
+  bars = [],
+  academicEdges,
+  noteDates,
+  heatmapOn,
+  dayHrefBase,
+  selectedDayIso,
+}: MonthGridProps) {
   const days = getMonthGridDays(monthAnchor);
   const today = todayInClubTime();
   const weeks = chunkIntoWeeks(days);
@@ -57,7 +71,10 @@ export function MonthGrid({ monthAnchor, bars = [], dayHrefBase, selectedDayIso 
           );
 
           return (
-            <div key={week[0].toISOString()} className="relative grid grid-cols-1 sm:grid-cols-7">
+            <div
+              key={week[0].toISOString()}
+              className="relative grid flex-1 grid-cols-1 sm:grid-cols-7"
+            >
               {week.map((day, dayInWeekIndex) => {
                 const coveringBars = bars.filter((bar) => barCoversDay(bar, day));
                 const visibleCoveringCount = visibleLanes.filter((l) => barCoversDay(l.bar, day)).length;
@@ -72,6 +89,9 @@ export function MonthGrid({ monthAnchor, bars = [], dayHrefBase, selectedDayIso 
                     today={today}
                     dominantKind={dominantKind(coveringBars.map((b) => b.kind))}
                     overflowCount={Math.max(0, overflow)}
+                    hasNote={noteDates?.has(iso) ?? false}
+                    academicEdge={academicEdges?.get(iso)}
+                    heatmapOn={heatmapOn}
                     href={dayHrefBase ? `${dayHrefBase}&day=${iso}` : undefined}
                     selected={selectedDayIso === iso}
                     dayIndex={flatDayIndex}
@@ -85,10 +105,18 @@ export function MonthGrid({ monthAnchor, bars = [], dayHrefBase, selectedDayIso 
                 >
                   {visibleLanes.map(({ bar, startCol, endCol, lane }) => {
                     const style = getEventStyle(bar.kind);
+                    // Ders oturumları her zaman tek günlük — "kesintisiz şerit"
+                    // anlamı taşımıyorlar (o, çok günlü akademik takvim/etkinlik
+                    // kayıtları için). Hücreyi tam doldurup uzun bir çizgi gibi
+                    // durmasınlar diye (kullanıcı isteği, 2026-09-07) sabit dar
+                    // genişlikte, sola yaslı bir "rozet" olarak gösteriliyorlar.
+                    const isCourseBar = bar.kind === "course_session" || bar.kind === "course_session_lab";
                     return (
                       <div
                         key={bar.id}
-                        className={`pointer-events-auto truncate rounded px-1 text-[10px] leading-[1.1rem] ${style.barClassName}`}
+                        className={`pointer-events-auto truncate rounded px-1 text-[10px] leading-[1.1rem] ${style.barClassName} ${
+                          isCourseBar ? "w-16 justify-self-start" : ""
+                        }`}
                         style={{
                           gridColumnStart: startCol + 1,
                           gridColumnEnd: endCol + 2,

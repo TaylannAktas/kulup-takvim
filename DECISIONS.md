@@ -279,3 +279,301 @@ Spesifikasyonun "yazdırılabilir... PNG görüntü" hedefi için bağımlılık
 gerekir, bu da `html-to-image` gibi bir kütüphane talep eder. Minimal bağımlılık ilkesiyle 
 çelişir. Alternatif: `window.print()` + `@media print` CSS (Feature 2'de uygulandı) — 
 tarayıcı yazdırma iletişim kutusundan PDF olarak kaydediyor, aynı ihtiyacı karşılıyor.
+
+### Bilinen veri sorunları — `exam_sessions` şişmiş ve bir kayıt 900 yıl ileri tarihli (2026-09-06)
+Üretim/dev veritabanında `exam_sessions` **11.619 satıra** çıkmış durumda; DECISIONS.md'nin
+kod yorumlarındaki "bir dönem birkaç yüz satır" varsayımı artık geçerli değil. Tespit
+edilenler:
+- `max(exam_date) = 2924-12-04` — gerçek bir tarih olamaz, sınav programı senkron/ayrıştırma
+  tarafında bir yerde yıl 1000 kaydırılmış görünüyor (muhtemelen "d579848 Gerçek üretim
+  hatası: sınav programı senkronu 120/120 başarısız çıkıyordu" ile aynı kökten, ya da ayrı
+  bir regresyon — henüz doğrulanmadı).
+- 2.988 grup `(course_code, exam_date, start_time, room, section)` birden fazla kez var —
+  senkronun eski çalıştırmalardan kalan satırları temizlemediğine işaret ediyor (upsert/dedup
+  eksik).
+- Bu satır artışı, sınav programı sol panelinin (`ExamSchedulePanel`) her `/calendar`
+  yüklemesinde **tüm tabloyu filtre uygulamadan çekip render etmesiyle** birleşince sayfa
+  yüklemesini 20-27 saniyeye çıkarıyordu (kullanıcı raporu + `time_total` ölçümü).
+- **Uygulanan düzeltme (bu commit):** `ExamSchedulePanel` artık görünen aya ± bir ay
+  pencereyle DB'de tarih filtresi uyguluyor (`components/sidebar/ExamSchedulePanel.tsx`);
+  `getMonthCalendarBars`'daki sınav sorgusu da aynı şekilde `gridStart`/`gridEnd` ile DB'de
+  sınırlandı (önceden tüm tabloyu çekip bellekte filtreliyordu). Bu, satır sayısı ne olursa
+  olsun render'ı sınırlı tutar — ama **kök veri sorununu çözmüyor**.
+- **Çözülmedi, kullanıcı onayı bekliyor:** (1) senkron koduna dedup/upsert eklenmesi, (2)
+  `exam_date > 2100` gibi mantıksız satırların temizlenmesi. Üretim verisini silen/değiştiren
+  bir migration kullanıcı onayı olmadan yazılmadı.
+
+### Gün ayrıntı paneli sağdan alta taşındı (2026-09-06)
+Spec §6.5 sağ tarafta açılan bir panel tarif ediyordu (`DayDetailPanel` `w-96 border-l`).
+Kullanıcı isteği üzerine takvimin hemen altına, alt araç çubuğunun üstüne taşındı: panel artık
+tam genişlikte, sabit `h-80` yükseklikte yatay bir şerit (`app/calendar/page.tsx`'te
+`BottomToolbar`'dan önce, ana sütunun içine alındı — önceden satırın üçüncü flex öğesiydi).
+`HourlyTimeline` iç yapısı değişmedi (saat ekseni + üst üste binen oturum sütunları), sadece
+dış kapsayıcı dikeyden yataya döndü; "bu gün neden kırmızı" bölümü de dar panelde alt alta
+dururken artık zaman çizelgesinin sağında sabit genişlikte bir sütun.
+
+### Görünüm anahtarı üst şeride taşındı, ders bar'ları sabit dar rozet (2026-09-07)
+- `ViewSwitcher` (Dönem/Ay/Hafta) alt araç çubuğundan (`BottomToolbar`) üst şeride, tarih
+  başlığının (◀ Ay Adı ▶) hemen yanına taşındı. `BottomToolbar` artık sadece + Etkinlik/+ Not/
+  Katmanlar/Dışa aktar içeriyor, `justify-end` ile sağa yaslı.
+- `MonthGrid.tsx`'teki bar render'ı: `course_session` türündeki bar'lar (ders oturumları) artık
+  hücreyi tam doldurup "uzun çizgi" gibi durmuyor — sabit `w-14` (56px) genişlikte, sola yaslı
+  (`justify-self-start`) bir rozet. Diğer bar türleri (akademik takvim, sınav, kulüp etkinliği)
+  DEĞİŞMEDİ — onlar gerçekten çok günlü olabiliyor, "kesintisiz şerit" anlamlarını koruyorlar.
+  Ders oturumları zaten her zaman tek günlük olduğu için (haftalık desenden çoğaltılıyor) bu bir
+  bilgi kaybı değil, sadece görsel sıkıştırma.
+
+### Dönem görünümü aylık ızgara listesine döndü, ısı haritası katmana taşındı, sınav/akademik filtreleri tik kutulu (2026-09-08)
+Üç ayrı istek:
+
+1. **"Dönem" artık ardışık aylık takvim listesi.** Eski GitHub-katkı-grafiği tarzı ısı haritası
+   (`TermHeatmap.tsx`, tek dönem için küçük kareler) tamamen kaldırıldı (dosya silindi, hiçbir
+   yerde kullanılmıyordu). `/calendar/term` artık içinde bulunulan aydan **Temmuz 2027'ye kadar**
+   (kullanıcının verdiği sabit bitiş — akademik yıl sonuna göre dinamikleştirilmedi, `Math`
+   basit bir ay döngüsü) her ay için TAM bir `MonthGrid` render ediyor, kaydırılabilir tek
+   sayfada alt alta. Güz/Bahar/Yaz dönem seçici kaldırıldı (artık tek bir dönemi değil, hepsini
+   gösteriyor). Performans: 11 ay × 4 tablo = 44 sorgu paralel çalıştırıldığında gerçek veriyle
+   654ms ölçüldü — önceki "tüm exam_sessions'ı çekip render et" tuzağına düşülmedi çünkü her ay
+   kendi penceresiyle sorgulanıyor (aynı `getMonthCalendarBars`/`getMonthNoteDates`, tek ay
+   görünümüyle birebir aynı fonksiyonlar, sadece 11 kez paralel çağrılıyor).
+2. **Isı haritası artık Ay görünümünde bir katman, varsayılan KAPALI.** `EventStyle`'a
+   `heatmapBackgroundClassName` eklendi (TÜM türler için tanımlı — eski `cellBackgroundClassName`
+   sadece 2 tür içindi ve her zaman açıktı, dokunulmadı). `LayersDropdown`'a adlandırılmış bir
+   "Isı haritası" tik kutusu eklendi (`HEATMAP_LAYER_ID = "view:heatmap"`, `lib/calendar/layers.ts`).
+   `DayCell` artık `heatmapOn` prop'una göre `cellBackgroundClassName` (katman kapalı, eski
+   davranış — DEĞİŞMEDİ) veya `heatmapBackgroundClassName` (katman açık, tüm türler tonlanır)
+   kullanıyor.
+3. **Sınav Programı (fakülte/tür) ve Akademik Takvim (kategori) filtreleri artık tik kutulu.**
+   Eski "pill" (yuvarlak, yan yana) buton stili yerine Sınıflar'daki gibi dikey, tik kutulu satır
+   listesi — yeni paylaşılan `FilterCheckboxRow` (`components/sidebar/FilterCheckboxRow.tsx`).
+   Bu iki panel Server Component olduğu için (href'ler sunucuda üretiliyor) checkbox'lar salt
+   görsel (`readOnly`), tıklamayı sarmalayan `<Link>` yapıyor — CourseSchedulePanel'deki
+   client-state'li checkbox'lardan farklı ama görsel olarak birebir aynı.
+
+### Akademik takvim — tam çerçeve yerine başlangıç/bitiş kenarı, çizelgede alt şerit (2026-09-08)
+Bir önceki maddedeki "her günü çerçevele" tasarımı da kullanıcıya göre yetersizdi — bazı
+kayıtlar 150+ gün sürdüğü için (bkz. bir önceki madde) neredeyse ay boyunca her günü
+çerçeveliyordu, bu da kendi başına kalabalık yaratıyordu. Yeni tasarım: sadece kaydın
+**başladığı günün SOL kenarına**, **bittiği günün SAĞ kenarına** kalın renkli çerçeve.
+Aradaki günlere hiç dokunulmuyor. Gerçek Eylül 2026 verisiyle doğrudan test edildi: görünür
+ay ızgarasında 25 akademik kayıt eşleşiyor ama sadece **12 gün** kenar işareti alıyor (tek
+günlük kayıtlarda aynı gün hem sol hem sağ kenar birden).
+
+Uygulama: `getMonthCalendarBars`'ın döndürdüğü `academicEdges: Map<"YYYY-MM-DD", {start?,
+end?: EventKind}>` — `AcademicEdge` tipi (`month-events.ts`). `EventStyle`'a `frameClassName`
+yerine `frameStartClassName`/`frameEndClassName` eklendi (Tailwind JIT runtime'da
+`border-l-${renk}` gibi birleştirilmiş string tanımıyor, literal class adı gerekiyor — bu
+yüzden `border-l-4 border-l-stone-500 dark:border-l-stone-400` gibi TAM sınıf adları kod
+içinde sabit). Dönem ısı haritası (`/calendar/term`) hâlâ kapsanan HER günü bilmek istediği
+için `academicDayKinds` (eski, tam kapsama haritası) da AYRICA döndürülmeye devam ediyor —
+iki farklı tüketici, iki farklı granülerlik.
+
+**Çizelgede alt şerit:** Güne tıklandığında açılan yatay zaman çizelgesinin (`HourlyTimeline`)
+en altına, o günü etkileyen akademik takvim kayıtları saat eksenine bağlı olmadan (tam
+genişlikte, saate göre konumlanmayan) birer renkli çizgi olarak eklendi — `academicEntries`
+prop'u, `DayDetailPanel`'in zaten sahip olduğu `affectingAcademicEntries`'ten türetiliyor
+(artık `kind: EventKind` alanı da taşıyor, `day-detail.ts`'te `academicCalendarKindFromCategory`
+ile hesaplanıyor). Sağdaki "Bu gün neden kırmızı?" metin paneli KALDIRILMADI, aynı veri şimdi
+iki yerde (çizelgede çizgi + sağda açıklama metni) — kullanıcı sadece ekleme istedi, kaldırma değil.
+
+### Akademik takvim artık şerit değil çerçeve, lab dersleri daha koyu (2026-09-08)
+Kullanıcı raporu: "Akademik takvim seçiliyken takvimde çok fazla karalama oluyor". Kök sebep
+doğrulandı — gerçek veride bazı akademik takvim kayıtları AYLARCA sürüyor (örn. "Yeni
+uluslararası öğrenci kayıtları" 2026-06-30 → 2026-11-25, 150+ gün). Bunlar önceden
+`getMonthCalendarBars`'ın ürettiği `bars` dizisine diğerleriyle (sınav, ders, etkinlik) aynı
+şekilde giriyor, `MonthGrid`'in şerit/lane sistemine (metin + arka plan renkli çubuk, en fazla
+3 satır görünür) düşüyordu — aylarca süren bir kayıt neredeyse her günün 1-3 şerit satırını
+işgal edip metin taşıyordu.
+
+**Çözüm — akademik kayıtlar artık `bars`'ta değil:** `getMonthCalendarBars`'ın dönüş tipi
+`CalendarBarItem[]` yerine `{ bars, academicDayKinds }` oldu (breaking change, tek çağıran
+`app/calendar/page.tsx` + `app/calendar/term/page.tsx` güncellendi). `academicDayKinds` bir
+`Map<"YYYY-MM-DD", EventKind>` — her gün için (birden fazla kayıt çakışırsa TATİL >
+DERS_DONEMI > KAYIT > İDARİ önceliğiyle) tek bir kategori. `DayCell` bunu metin/şerit yerine
+sadece **hücre çerçevesi rengi** olarak kullanıyor (`EventStyle.frameClassName`, yeni alan —
+tatil=stone, dönem sınırı=mavi, kayıt=cyan, idari=gri, her biri ayrı renk). Kutu içine hiçbir
+şey yazılmıyor; erişilebilirlik için (renk tek başına anlam taşımasın, spec §7.6) kategori adı
+`title` (fare üstüne gelince tooltip) olarak duruyor.
+
+Dönem ısı haritası (`/calendar/term`) etkilenmesin diye `academicDayKinds` oradan da ayrıca
+okunup yoğunluk hesabına katılıyor — o görünüm hâlâ akademik günleri yansıtıyor, sadece ay
+ızgarasındaki şerit kaldırıldı.
+
+**Lab dersleri daha koyu:** `course_sessions`'ta "bu bir lab mı" diye ayrı bir alan yok;
+edupage verisinde ders KODUNA değil DERSLİK adına göre ayrışıyor (örn. "Genel Kimya Labı",
+"Computer Network Lab.", "MAKET LAB." — gerçek veride 94 oturumun 23'ü, %24'ü lab). Yeni
+`courseSessionKind(room)` (`color-system.ts`) `room` metninde "lab" geçip geçmediğine bakıp
+`course_session_lab` (koyu düz mor, `bg-purple-700`) ya da `course_session` (eski yarı saydam
+`bg-purple-500/40`) döndürüyor — hem ay ızgarasında hem gün ayrıntı çizelgesinde kullanılıyor.
+
+### Görünüm anahtarı üstte, ay ızgarasında boşluk giderildi, gün notları göründür (2026-09-07)
+1. **Ay ızgarası ↔ çizelge arası boşluk daraltıldı** — hafta satırları (`MonthGrid.tsx`) artık
+   `flex-1` (eskiden içeriğe göre doğal yükseklik alıyorlardı, kalan boşluk sarmalayıcının
+   ALTINDA boş kalıyordu — kaç hafta olursa olsun ızgara artık kullanılabilir yüksekliği tam
+   dolduruyor).
+2. **Çizelge yüksekliği artırıldı** — `DayDetailPanel` `h-80`(320px) → `h-96`(384px).
+3. **Çizelge sola yaslı, sağda Notlar paneli** — sağdaki "bu gün neden kırmızı" bölümü artık
+   koşullu değil, sabit genişlikte (`w-72`) bir sütunun İÇİNDE — bu sütun her zaman render
+   ediliyor, çizelge (`flex-1`) böylece her zaman soldaki kalan alanı kaplıyor ("sola yaslı").
+   Aynı sütunun altına **Notlar** bölümü eklendi: o günün notu varsa metni + "Düzenle", yoksa
+   "+ Not ekle" — ikisi de zaten var olan `onAddNote` (→ `DayNoteModal`) akışını tetikliyor.
+4. **Gün notları hiç bağlanmamıştı — artık bağlandı.** `day_notes` tablosu ve tam bir CRUD API'si
+   (`/api/day-notes`) zaten vardı ama:
+   - `getDayDetail` notları hiç sorgulamıyordu → şimdi `notes` alanı eklendi, sağdaki panel
+     bunu kullanıyor.
+   - Ay ızgarasında notu olan günler için spec §6.5'in tarif ettiği "sarı köşe üçgeni" işareti
+     hiç implemente edilmemişti → `getMonthNoteDates` (yeni, `month-events.ts`) o ay için
+     notu olan günlerin tarihini döner, `DayCell.tsx` sağ üst köşede CSS border-triangle
+     tekniğiyle sarı üçgen çiziyor.
+   - DB'de zaten iki gerçek test notu vardı (5 Eylül ve 31 Ağustos 2026 — Europe/Istanbul yerel
+     tarihine göre; ham UTC değerleri `T21:00:00Z` görünüyor, bu proje genelindeki bilinen
+     "date sütunu yerel-gece-yarısı Date olarak okunuyor" davranışının bir yansıması, bkz.
+     `lib/calendar/day-notes.ts` yorumu) — bu özellik artık onları da doğru gösterecek.
+
+**Doğrulanmadı, bilinsin:** `dayNotes.date` (ve `examSessions.examDate`) okunurken `pg`
+sürücüsü `date` sütununu SUNUCUNUN yerel saat dilimine göre gece yarısı `Date` nesnesi olarak
+kuruyor (Node.js + node-postgres'in bilinen bir davranışı). Yazma tarafı (`parseDateOnly`)
+bilinçli olarak UTC gece yarısı kullanıyor. Yazma ve okuma HER ZAMAN aynı sunucu sürecinde
+olduğu için (Vercel'de ikisi de UTC) pratikte tutarlı kalıyor, ama bu varsayım hiç yazılı
+olarak doğrulanmadı/test edilmedi — üretimde bir gün kayması görülürse ilk bakılacak yer burası.
+
+### Ay ızgarasında sadece ders kodu, çizelgede sabit period listesi (2026-09-07)
+İki küçük düzeltme, aynı gün içindeki önceki iki maddenin üstüne:
+
+- Ay ızgarasındaki ders bar etiketi bir önceki maddede "kod + ad" yapılmıştı; kullanıcı bunu
+  da fazla buldu, sadece **kod** kaldı (örn. "CHE105", ad yok).
+- Gün ayrıntı çizelgesindeki period başlıkları artık "1. Ders / 9.30" gibi iki satır (kaçıncı
+  ders saati + nokta ayraçlı başlangıç saati) gösteriyor. Kullanıcı ayrıca gerçek period
+  verisine bağımlılığı gevşetmeyi ("koda gömebilirsin") onayladı — `lib/calendar/
+  default-periods.ts`'te Atılım'ın bilinen sabit 12 period'luk düzeni (09:30'dan başlayarak
+  50dk ders + 10dk ara) koda gömüldü. `getDayDetail` artık şu sırayı izliyor: önce gerçek
+  `timetable_imports.periods` verisini dener (bu özellikten sonra yapılmış içe aktarmalar
+  için doğru), yoksa bu sabit listeye düşer — yani artık **her zaman** period sütunları
+  görünüyor, eski içe aktarmaları yeniden yüklemeyi beklemeye gerek kalmadı. Gerçek veri hâlâ
+  öncelikli: okul saatleri değişirse ve kullanıcı yeniden içe aktarırsa, sabit listeyi değil
+  gerçek veriyi kullanmaya devam eder.
+
+### Kategori içi arama, görünüm anahtarı sadeleştirme, ders bar etiketi, içe aktarma düzenle/sil (2026-09-07)
+Tek oturumda dört ayrı kullanıcı isteği:
+
+1. **Kategori içi arama** — "Ders Programı"/"Sınav Programı"/"Akademik Takvim" panellerinin
+   her birine, başlığın hemen altında (panelin en üstünde) bir arama kutusu eklendi.
+   `ExamSchedulePanel` ve `AcademicCalendarPanel` Server Component oldukları için (DB'den
+   doğrudan okuyorlar) serbest metin arama durumu tutamıyorlardı — liste render'ı ayrı birer
+   client component'e (`ExamSessionSearchList`, `AcademicEntrySearchList`) taşındı, fakülte/tür/
+   kategori çipleri `children` olarak arama kutusunun altına geçiriliyor. `CourseSchedulePanel`
+   zaten client'tı; dört sekmenin (Sınıflar/Derslikler/Dersler/Toplu Çizelge) ayrı ayrı arama
+   kutuları tek bir üstteki kutuya birleştirildi, "Sınıflar" ve "Toplu Çizelge" sekmelerine de
+   arama ilk kez eklendi.
+2. **Görünüm anahtarı** — `ViewSwitcher`: [Ay][Hafta][Gün][Dönem] → [Dönem][Ay][Hafta]. "Gün"
+   kaldırıldı (zaten hiç implemente edilmemişti, `href="#"` idi) — gün ayrıntı çizelgesi (alttaki
+   yatay panel) tek günü göstermeye zaten yarıyor.
+3. **Ay ızgarasında ders bar etiketi** — `getMonthCalendarBars`'taki ders oturumu bar'ları artık
+   saat göstermiyor, sadece `courseCode + courseName` (örn. "HIST101 Uygarlık Tarihi"). Saat
+   bilgisi zaten gün ayrıntı çizelgesinde (period sütunlarıyla) var; küçük ay hücresinde gereksiz
+   kalabalık yaratıyordu. Sınav bar'ları BUNDAN ETKİLENMEDİ (hâlâ saat gösteriyor) — istek özellikle
+   "derslerin" diyordu, sınavlar için ayrı bir talep yoktu.
+4. **İçe aktarma listesinde düzenle/sil** — `/api/timetable-imports/[id]`'ye `PATCH` eklendi
+   (sourceLabel/termCode değiştirir, ders oturumlarına dokunmaz; `DELETE` zaten vardı, dokunulmadı).
+   `/admin/timetable-imports` tablosundaki her satır artık `TimetableImportRow` (client) — satır içi
+   düzenleme formu + silme düğmesi (native `confirm()` ile onay). Denetim kaydına (`audit_log`)
+   hem düzenleme hem silme zaten yazılıyor (`logAudit`, `action: "update"`/`"delete"`).
+
+### Gün ayrıntı çizelgesi gerçek "ders saati" (period) sınırlarına bölündü (2026-09-07)
+Kullanıcı çizelgenin "okulun sitesindeki gibi" ders saatlerine bölünmesini istedi. edupage
+sayfası her dersin süresini bağımsız serbest saatler yerine sabit period'lara (bkz. spec §4.3,
+`parse-svg-timetable.ts`'in `extractPeriods`'ı) oturtuyor ama bu bilgi daha önce sadece dahili
+olarak oturum saatlerini çözmek için kullanılıp atılıyordu, hiç saklanmıyordu.
+
+**Şema değişikliği:** `timetable_imports`'a `periods` (jsonb, nullable) sütunu eklendi
+(`npx drizzle-kit push` ile uygulandı — README'nin belgelediği yöntem). `parseEdupageTimetableSvg`
+artık `{ rows, warnings, periods }` döndürüyor; `normalize.ts` `periods`'u da kaydediyor.
+
+**Önemli — geriye dönük veri:** Bu özellikten ÖNCE yapılmış 5 içe aktarmanın `periods` alanı
+`null` (doğrulandı). Bunlar için çizelge eski genel saat/yarım saat ızgarasına düşüyor —
+kırılmıyor ama period'lara bölünmüyor de. **Kullanıcının period görmek istediği sınıfları
+bookmarklet ile yeniden içe aktarması gerekiyor** (aynı "yeniden içe aktar" akışı, veri
+üzerine yazılıyor).
+
+**Tasarım kararı — öğe konumlandırma DEĞİŞMEDİ:** `HourlyTimeline`'da period'lar sadece üst
+şerit etiketlerini ve dikey çizgileri değiştiriyor (period varsa sütun başlığı + sınır çizgisi,
+yoksa eski nokta saat etiketi). Ders/sınav/etkinlik çubuklarının yerleşimi hep gerçek saatine
+göre orantılı (`minutesToPercent`) hesaplanmaya devam ediyor — period'a göre ayrık/bükülmüş bir
+eksene GEÇİLMEDİ. Gerekçe: sınav ve kulüp etkinlikleri period sınırlarına uymuyor (ör. bir
+sınav 10:00-12:00 sürebilir, iki period'u keser); ayrık eksende bunları doğru yerleştirmek
+ciddi ek karmaşıklık gerektirirdi. Bu karma yaklaşım hem "okulun sitesi gibi bölünmüş görünüm"
+hem de sınav/etkinliklerin doğru saatte kalmasını aynı anda sağlıyor.
+
+Birden fazla ders programı katmanı aynı anda seçiliyse (bkz. yukarıki "çoklu seçime açıldı"
+maddesi) o günün oturumlarının ait olduğu TÜM içe aktarmalardan period'lar çekilip
+(başlangıç+bitiş saati aynı olanlar tekilleştirilerek) birleştiriliyor — farklı sınıflar
+gerçekte aynı period grid'ini paylaştığı için pratikte tek bir set çıkıyor.
+
+### Gün ayrıntı panelinde ders oturumları eksikti — eklendi (2026-09-07)
+Kullanıcı "güne tıklayınca zaman çizelgesinde hangi saatte hangi ders var göremiyorum"
+diye bildirdi. Kök sebep: `lib/calendar/day-detail.ts`'in `getDayDetail`'i Faz 4'te
+(ders programı içe aktarma) hiç güncellenmemiş kalmış — hâlâ eski "Ders oturumları henüz
+yok (Faz 4)" yorumuyla duruyordu, sadece sınav ve kulüp etkinliklerini sorguluyordu.
+`getMonthCalendarBars` ay ızgarasında ders oturumlarını doğru gösteriyordu (bkz. yukarıki
+"çoklu seçime açıldı" maddesi) ama gün ayrıntısı panelinde hiç yoktu — iki fonksiyon
+birbirinden bağımsız gelişmiş, biri unutulmuş.
+
+Düzeltme: `parseActiveCourseLayers` ve `isoWeekday` `month-events.ts`'ten export edilip
+`day-detail.ts`'te tekrar kullanıldı — aynı aktif sınıf/derslik/ders seçimi ve aynı
+tekilleştirme mantığı (OR filtre + id bazlı dedup) burada da uygulanıyor, ki ay
+ızgarasında görünen katmanlarla gün ayrıntısında görünenler tutarlı olsun. "Ders Programı"
+kategori tik kutusu (yukarıki madde) burada da geçerli.
+
+### Kategori bazlı görünürlük tik kutuları eklendi (2026-09-07)
+Kullanıcı "Sınıflar"daki tik kutusu sistemini üst kategoriler için de istedi: takvimde
+sadece Ders Programı, sadece Sınav Programı ya da sadece Akademik Takvim'i görebilmek.
+`components/sidebar/CategoryVisibilityCheckbox.tsx` + `lib/calendar/category-layers.ts`
+eklendi; `SidebarAccordion`'a `headerControl` prop'u (katla/aç düğmesinin dışında, ayrı bir
+kardeş öğe — checkbox'a tıklamak accordion'u açıp kapatmasın diye) eklendi.
+
+Bilinçli tasarım kararı: bu katmanlar diğerlerinin (fakülte/tür çipleri, "Sınıflar" seçimi)
+TERSİ mantıkla kodlanıyor — boş katman "hiçbir şey görünmüyor" değil "hiçbir şey
+GİZLENMEMİŞ" demek, yani varsayılan (ilk ziyarette, URL'de hiçbir şey yokken) üç kategori
+de AÇIK. Namespace bu yüzden `category-hidden` (görünür değil, gizli olanı listeliyor).
+Aksi hâlde mevcut kullanıcılar link paylaştığında ya da sayfayı ilk açtığında hiçbir şey
+görünmeyecekti — geriye dönük uyumluluk için varsayılan "hepsi açık" korundu.
+
+`getMonthCalendarBars` VE `getDayDetail` (gün ayrıntı paneli) ikisi de bu katmanlara bakıyor
+— kategori gizliyken ilgili DB sorgusu hiç atılmıyor (sadece bar/oturum listesi boşaltılmıyor,
+sorgu maliyeti de düşüyor). "Ders Programı" için mevcut alt seçim (hangi sınıf/derslik/ders
+işaretli) korunuyor — üst kutuyu kapatıp tekrar açınca aynı seçim geri gelir.
+
+### Toplu ders programı içe aktarma — bookmarklet, sunucu taraflı tarama DEĞİL (2026-09-07)
+Kullanıcı "çok fazla sınıf var, hepsini elle yüklemek zaman alıyor, otomatikleştirebilir
+miyiz?" diye sordu. edupage.org `robots.txt` ile otomatik erişimi reddettiği ve spec §4.3 /
+bu dosyanın üstteki maddeleri bunu bilinçli olarak "sunucudan kazıma yok" kararına bağladığı
+için, kullanıcıya üç seçenek sunuldu (tam otomatik sunucu taraması dahil, ama işaretlenerek
+"projenin kararına aykırı" diye belirtildi) — **bookmarklet** seçildi.
+
+Uygulama: `components/upload/TimetableBookmarklet.tsx` bir `javascript:` yer imi üretiyor.
+Kullanıcı edupage'de bir sınıf sayfasını KENDİSİ elle açtığında yer imine tıklıyor; script
+sadece o an DOM'da zaten yüklü olan `document.documentElement.outerHTML`'i panoya
+`{label, html}` JSON'u olarak yazıyor ve `/admin/timetable-imports` sekmesini
+açıyor/öne getiriyor — **edupage'e ek bir ağ isteği göndermiyor, sayfa keşfi/taraması
+yapmıyor.** `TimetableUploadForm.tsx`'e eklenen "Panodan Yapıştır" düğmesi panoyu okuyup
+`File` nesnesine sarıyor, geri kalan (ayrıştırma, yükleme) tamamen mevcut akış.
+
+Bilinçli sınır: bu hâlâ kullanıcının her sayfayı elle açmasını gerektiriyor (tıklama sayısını
+~7'den 2'ye indiriyor, ama sınıf listesini kendisi otomatik keşfetmiyor). Tam otomatik toplu
+tarama istenirse ayrı bir karar/onay gerekir — bu commit'te bilerek yapılmadı.
+
+CORS notu: panoya yazma/okuma tamamen tarayıcı API'si üzerinden yapılıyor; uygulamanın
+`/api/timetable-imports` ucuna edupage.org'dan doğrudan cross-origin istek YOK — bookmarklet
+panoyu dolduruyor, gerçek POST isteği hep aynı origin'den (`kulup-takvim` sekmesinden), mevcut
+oturum çerezleriyle gidiyor. Yeni bir CORS açığı/güvenlik yüzeyi eklenmedi.
+
+### Ders programı katmanları çoklu seçime açıldı (2026-09-06)
+Spec §6.2/§7.1'in "katmanlar bağımsız açılıp kapanabilir" ilkesi ders programı katmanları için
+uygulanmamıştı — `CourseSchedulePanel`/`month-events.ts` en fazla bir sınıf/derslik/ders
+katmanının aktif olmasına izin veriyordu (radio benzeri, `parseActiveCourseLayer` tekil değer
+dönüyordu). Kullanıcı isteği üzerine (birden fazla içe aktarılan ders programını aynı anda
+takvimde görmek) diğer katmanlarla aynı toggle davranışına geçirildi:
+`parseActiveCourseLayers` artık dizi dönüyor, `getMonthCalendarBars` eşleşen tüm oturumları
+`OR` ile çekip oturum id'sine göre tekilleştiriyor (aynı oturum birden fazla seçilen katmana
+uyarsa iki kez bar üretmesin diye). Karışık tip seçimi de mümkün (örn. bir sınıf + bir derslik
+aynı anda) — spesifik olarak yasaklanmasını gerektiren bir sebep yok.

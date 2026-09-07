@@ -2,14 +2,16 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { DayDetailPanel } from "./DayDetailPanel";
-import type { TimelineItem } from "./HourlyTimeline";
+import type { TimelineItem, TimelinePeriod } from "./HourlyTimeline";
+import type { EventKind } from "@/lib/calendar/color-system";
 
 type DayDetailPanelContainerProps = {
   dateIso: string;
   summaryText: string;
   items: TimelineItem[];
-  affectingAcademicEntries: Array<{ id: string; description: string; category: string }>;
-  hrefSuffix: string;
+  periods: TimelinePeriod[];
+  notes: Array<{ id: string; body: string }>;
+  affectingAcademicEntries: Array<{ id: string; description: string; category: string; kind: EventKind }>;
   canEdit: boolean;
 };
 
@@ -22,8 +24,9 @@ export function DayDetailPanelContainer({
   dateIso,
   summaryText,
   items,
+  periods,
+  notes,
   affectingAcademicEntries,
-  hrefSuffix,
   canEdit,
 }: DayDetailPanelContainerProps) {
   const router = useRouter();
@@ -52,6 +55,8 @@ export function DayDetailPanelContainer({
       date={new Date(dateIso)}
       summaryText={summaryText}
       items={items}
+      periods={periods}
+      notes={notes}
       affectingAcademicEntries={affectingAcademicEntries}
       onClose={handleClose}
       onAddEvent={canEdit ? handleAddEvent : undefined}

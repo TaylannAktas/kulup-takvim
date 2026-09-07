@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { DayNoteForm } from "./DayNoteForm";
 
@@ -14,6 +14,13 @@ export function DayNoteModal({ date, canEdit }: DayNoteModalProps) {
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [noteData, setNoteData] = useState<{ id: string; body: string } | null>(null);
+
+  const handleClose = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("newNote");
+    router.push(`/calendar${params.toString() ? `?${params.toString()}` : ""}`, { scroll: false });
+    router.refresh();
+  }, [searchParams, router]);
 
   // Yüklemeye başla
   useEffect(() => {
@@ -42,14 +49,7 @@ export function DayNoteModal({ date, canEdit }: DayNoteModalProps) {
     return () => {
       isMounted = false;
     };
-  }, [date]);
-
-  function handleClose() {
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("newNote");
-    router.push(`/calendar${params.toString() ? `?${params.toString()}` : ""}`, { scroll: false });
-    router.refresh();
-  }
+  }, [date, handleClose]);
 
   async function handleSubmit(body: string): Promise<{ ok: true } | { ok: false; error: string }> {
     try {

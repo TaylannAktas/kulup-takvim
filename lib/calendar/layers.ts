@@ -49,3 +49,12 @@ export function isLayerActive(layers: Set<string>, id: string): boolean {
 export function makeLayerId(namespace: string, value: string): string {
   return `${namespace}:${value}`;
 }
+
+/**
+ * Ay görünümündeki "Isı haritası" katmanı — varsayılan KAPALI (kullanıcı
+ * isteği, 2026-09-08). Diğer katman kimlikleriyle aynı `layers` parametresinde
+ * tutuluyor; boş/yok = kapalı, `toggleLayer`/`isLayerActive` ile aynı şekilde
+ * açılıp kapanır. Eski Dönem sayfasındaki GitHub-katkı-grafiği tarzı ısı
+ * haritasının (kaldırıldı) yerini alıyor, artık Ay görünümünde bir katman.
+ */
+export const HEATMAP_LAYER_ID = "view:heatmap";

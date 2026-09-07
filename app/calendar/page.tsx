@@ -3,9 +3,11 @@ import { MonthGrid } from "@/components/calendar/MonthGrid";
 import { KeyboardGridNav } from "@/components/calendar/KeyboardGridNav";
 import { BottomToolbar } from "@/components/calendar/BottomToolbar";
 import { DayDetailPanelContainer } from "@/components/calendar/DayDetailPanelContainer";
+import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
 import { EventModal } from "@/components/events/EventModal";
 import { DayNoteModal } from "@/components/notes/DayNoteModal";
 import { SidebarAccordion } from "@/components/sidebar/SidebarAccordion";
+import { CategoryVisibilityCheckbox } from "@/components/sidebar/CategoryVisibilityCheckbox";
 import { AcademicCalendarPanel } from "@/components/sidebar/AcademicCalendarPanel";
 import { ExamSchedulePanel } from "@/components/sidebar/ExamSchedulePanel";
 import { CourseSchedulePanel } from "@/components/sidebar/CourseSchedulePanel";
@@ -16,8 +18,8 @@ import {
   previousMonth,
   todayInClubTime,
 } from "@/lib/calendar/date-utils";
-import { parseLayers } from "@/lib/calendar/layers";
-import { getMonthCalendarBars } from "@/lib/calendar/month-events";
+import { parseLayers, isLayerActive, HEATMAP_LAYER_ID } from "@/lib/calendar/layers";
+import { getMonthCalendarBars, getMonthNoteDates } from "@/lib/calendar/month-events";
 import { getDayDetail } from "@/lib/calendar/day-detail";
 import { auth } from "@/auth";
 
@@ -62,12 +64,14 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
 
   const monthAnchor = parseMonthParam(month);
   const activeLayers = parseLayers(new URLSearchParams(layersParam ? { layers: layersParam } : {}));
+  const heatmapOn = isLayerActive(activeLayers, HEATMAP_LAYER_ID);
   const selectedDay = parseDayParam(dayParam);
 
   const gridDays = getMonthGridDays(monthAnchor);
-  const [bars, dayDetail] = await Promise.all([
+  const [{ bars, academicEdges }, dayDetail, noteDates] = await Promise.all([
     getMonthCalendarBars(gridDays[0], gridDays[gridDays.length - 1], activeLayers),
-    selectedDay ? getDayDetail(selectedDay) : Promise.resolve(null),
+    selectedDay ? getDayDetail(selectedDay, activeLayers) : Promise.resolve(null),
+    getMonthNoteDates(gridDays[0], gridDays[gridDays.length - 1]),
   ]);
 
   const layersSuffix = layersParam ? `&layers=${layersParam}` : "";
@@ -98,6 +102,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
           >
             ▶
           </Link>
+          <ViewSwitcher />
         </div>
         <Link
           href={`/calendar${layersParam ? `?layers=${layersParam}` : ""}`}
@@ -108,17 +113,27 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
       </div>
       <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
         <aside className="no-print flex w-full lg:w-80 shrink-0 flex-col overflow-hidden border-b border-gray-200 lg:border-b-0 lg:border-r dark:border-gray-800">
-          <SidebarAccordion title="Ders Programı">
+          <SidebarAccordion
+            title="Ders Programı"
+            headerControl={<CategoryVisibilityCheckbox category="course" />}
+          >
             <CourseSchedulePanel />
           </SidebarAccordion>
-          <SidebarAccordion title="Sınav Programı">
+          <SidebarAccordion
+            title="Sınav Programı"
+            headerControl={<CategoryVisibilityCheckbox category="exam" />}
+          >
             <ExamSchedulePanel
               activeLayers={activeLayers}
               monthParam={monthParam(monthAnchor)}
               dayParam={dayParam}
             />
           </SidebarAccordion>
-          <SidebarAccordion title="Akademik Takvim" defaultOpen>
+          <SidebarAccordion
+            title="Akademik Takvim"
+            defaultOpen
+            headerControl={<CategoryVisibilityCheckbox category="academic" />}
+          >
             <AcademicCalendarPanel
               activeLayers={activeLayers}
               monthParam={monthParam(monthAnchor)}
@@ -132,23 +147,27 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
               <MonthGrid
                 monthAnchor={monthAnchor}
                 bars={bars}
+                academicEdges={academicEdges}
+                noteDates={noteDates}
+                heatmapOn={heatmapOn}
                 dayHrefBase={dayHrefBase}
                 selectedDayIso={dayParam}
               />
             </KeyboardGridNav>
           </div>
+          {selectedDay && dayDetail && (
+            <DayDetailPanelContainer
+              dateIso={selectedDay.toISOString()}
+              summaryText={dayDetail.summaryText}
+              items={dayDetail.items}
+              periods={dayDetail.periods}
+              notes={dayDetail.notes}
+              affectingAcademicEntries={dayDetail.affectingAcademicEntries}
+              canEdit={canEdit}
+            />
+          )}
           <BottomToolbar activeLayers={activeLayers} hrefSuffix={hrefSuffix} canEdit={canEdit} />
         </div>
-        {selectedDay && dayDetail && (
-          <DayDetailPanelContainer
-            dateIso={selectedDay.toISOString()}
-            summaryText={dayDetail.summaryText}
-            items={dayDetail.items}
-            affectingAcademicEntries={dayDetail.affectingAcademicEntries}
-            hrefSuffix={hrefSuffix}
-            canEdit={canEdit}
-          />
-        )}
       </div>
 
       {/* Event modals */}

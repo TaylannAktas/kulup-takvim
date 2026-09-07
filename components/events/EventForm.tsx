@@ -2,6 +2,36 @@
 
 import { useState } from "react";
 import { fromClubTime, toClubTime } from "@/lib/calendar/date-utils";
+import type { ConflictFlags } from "@/lib/calendar/conflict-types";
+
+/** `POST/PATCH /api/events`'e giden gövde (bkz. EventModal.handleSubmit). */
+export type EventFormValues = {
+  title: string;
+  description?: string;
+  startAt: string;
+  endAt: string;
+  isAllDay: boolean;
+  status: string;
+  location?: string;
+  expectedAttendance?: number;
+  colorOverride?: string;
+};
+
+/** API'den dönen (JSON üzerinden — Date alanları ISO string) bir etkinlik kaydı. */
+export type ClubEventRecord = {
+  id: string;
+  title: string;
+  description: string | null;
+  startAt: string;
+  endAt: string;
+  isAllDay: boolean;
+  status: string;
+  location: string | null;
+  expectedAttendance: number | null;
+  colorOverride: string | null;
+  updatedAt: string;
+  conflictFlags: ConflictFlags | null;
+};
 
 const STATUS_LABELS: Record<string, string> = {
   fikir: "Fikir",
@@ -23,7 +53,7 @@ type EventFormProps = {
     expectedAttendance?: number | null;
     colorOverride?: string | null;
   };
-  onSubmit: (values: Record<string, any>) => Promise<{ ok: true; event: any } | { ok: false; error: string }>;
+  onSubmit: (values: EventFormValues) => Promise<{ ok: true; event: ClubEventRecord } | { ok: false; error: string }>;
   submitLabel: string;
   showDelete?: boolean;
   onDelete?: () => void;
@@ -113,7 +143,7 @@ export function EventForm({
     setFieldErrors({});
 
     try {
-      const payload: Record<string, any> = {
+      const payload: EventFormValues = {
         title: values.title,
         description: values.description || undefined,
         startAt: datetimeLocalToIso(values.startAt),

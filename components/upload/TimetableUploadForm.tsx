@@ -18,6 +18,43 @@ export function TimetableUploadForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{ sessionCount: number; warnings?: string[] } | null>(null);
+  const [pastedFileName, setPastedFileName] = useState<string | null>(null);
+
+  /**
+   * Bookmarklet panoya `{label, html}` JSON'u yazıyor (bkz. TimetableBookmarklet).
+   * Düz metin panoya elle kopyalanmış saf HTML de kabul edilir (JSON.parse
+   * başarısız olursa olduğu gibi HTML sayılır) — kullanıcı bookmarklet
+   * kullanmadan da bir sayfanın kaynağını kopyalayıp buraya yapıştırabilsin.
+   */
+  async function handlePasteFromClipboard() {
+    setError(null);
+    try {
+      const text = await navigator.clipboard.readText();
+      let html = text;
+      let label = "";
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed && typeof parsed.html === "string") {
+          html = parsed.html;
+          if (typeof parsed.label === "string") label = parsed.label;
+        }
+      } catch {
+        // JSON değil — panodaki metni doğrudan HTML say.
+      }
+      if (!html.trim()) {
+        setError("Panoda içerik yok. Önce bookmarklet ile bir sayfa kopyalayın.");
+        return;
+      }
+      const pastedFile = new File([html], "panodan-yapistirilan.html", { type: "text/html" });
+      setFile(pastedFile);
+      setPastedFileName(pastedFile.name);
+      if (label.trim()) setSourceLabel(label.trim());
+    } catch {
+      setError(
+        "Panoya erişilemedi. Tarayıcı izin isteyebilir — isterse dosyayı elle de seçebilirsiniz."
+      );
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -62,6 +99,7 @@ export function TimetableUploadForm() {
 
       // Clear form
       setFile(null);
+      setPastedFileName(null);
       setSourceLabel("");
       setTermCode("");
 
@@ -81,13 +119,31 @@ export function TimetableUploadForm() {
           <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
             HTML Dosyası *
           </label>
-          <input
-            type="file"
-            accept=".htm,.html"
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
-            disabled={loading}
-            className="block w-full text-sm file:mr-3 file:cursor-pointer file:rounded file:border-0 file:bg-blue-600 file:px-3 file:py-1.5 file:text-white disabled:opacity-40"
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="file"
+              accept=".htm,.html"
+              onChange={(e) => {
+                setFile(e.target.files?.[0] || null);
+                setPastedFileName(null);
+              }}
+              disabled={loading}
+              className="block flex-1 text-sm file:mr-3 file:cursor-pointer file:rounded file:border-0 file:bg-blue-600 file:px-3 file:py-1.5 file:text-white disabled:opacity-40"
+            />
+            <button
+              type="button"
+              onClick={handlePasteFromClipboard}
+              disabled={loading}
+              className="rounded border border-purple-600 px-3 py-1.5 text-sm font-medium text-purple-700 hover:bg-purple-50 disabled:opacity-40 dark:text-purple-400 dark:hover:bg-purple-950/40"
+            >
+              Panodan Yapıştır
+            </button>
+          </div>
+          {pastedFileName && (
+            <p className="mt-1 text-xs text-purple-700 dark:text-purple-400">
+              Panodan alındı — bookmarklet ile kopyalanan sayfa seçili.
+            </p>
+          )}
         </div>
 
         <div>

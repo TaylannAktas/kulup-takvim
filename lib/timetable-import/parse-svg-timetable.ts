@@ -69,6 +69,14 @@ export type ParsedPeriod = {
 export type TimetableParseResult = {
   rows: ParsedCourseSession[];
   warnings: string[];
+  /**
+   * Bu sayfadaki dönem (saat) sütunları — kullanıcı raporu üzerine eklendi
+   * (2026-09-07): gün ayrıntı çizelgesini "okulun sitesindeki gibi" ders
+   * saatlerine bölebilmek için `timetable_imports.periods`'a kaydediliyor.
+   * Daha önce sadece dahili olarak oturum saatlerini çözmek için kullanılıp
+   * atılıyordu.
+   */
+  periods: ParsedPeriod[];
 };
 
 /** Yapı hiç tanınmadığında fırlatılan hata — çağıran katman kullanıcıya gösterir. */
@@ -359,5 +367,5 @@ export function parseEdupageTimetableSvg(html: string): TimetableParseResult {
     throw new TimetableStructureError("hiçbir ders kutusu okunamadı");
   }
 
-  return { rows, warnings };
+  return { rows, warnings, periods };
 }

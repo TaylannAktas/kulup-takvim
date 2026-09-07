@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { ViewSwitcher } from "./ViewSwitcher";
 import { LayersDropdown } from "./LayersDropdown";
 import { ExportDropdown } from "./ExportDropdown";
 
@@ -10,13 +9,14 @@ type BottomToolbarProps = {
 };
 
 /**
- * Spec §6.6 alt araç çubuğu. Etkinlik/not oluşturma (Faz 3) ve dışa aktarma
- * (Faz 5) henüz yok — o düğmeler bilinçli olarak devre dışı, "yakında" yazısıyla.
+ * Spec §6.6 alt araç çubuğu. Görünüm anahtarı (Dönem/Ay/Hafta) kullanıcı
+ * isteğiyle üst şeride, tarih başlığının yanına taşındı (2026-09-07) —
+ * burada değil. Etkinlik/not oluşturma (Faz 3) ve dışa aktarma (Faz 5) henüz
+ * yok — o düğmeler bilinçli olarak devre dışı, "yakında" yazısıyla.
  */
 export function BottomToolbar({ activeLayers, hrefSuffix, canEdit }: BottomToolbarProps) {
   return (
-    <div className="no-print flex items-center justify-between border-t border-gray-200 p-2 dark:border-gray-800">
-      <ViewSwitcher />
+    <div className="no-print flex items-center justify-end border-t border-gray-200 p-2 dark:border-gray-800">
       <div className="flex items-center gap-2">
         {canEdit ? (
           <>

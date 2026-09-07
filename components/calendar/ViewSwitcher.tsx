@@ -1,15 +1,16 @@
 import Link from "next/link";
 
 const VIEWS = [
+  { key: "donem", label: "Dönem", available: true, href: "/calendar/term" },
   { key: "ay", label: "Ay", available: true, href: "/calendar" },
   { key: "hafta", label: "Hafta", available: false, href: "#" },
-  { key: "gun", label: "Gün", available: false, href: "#" },
-  { key: "donem", label: "Dönem", available: true, href: "/calendar/term" },
 ] as const;
 
 /**
- * Ay/Hafta/Gün/Dönem görünüm anahtarı (spec §6.5). Hafta/Gün henüz yok
- * (devre dışı, "Yakında"); Ay ve Dönem Faz 5'te bağlandı.
+ * Dönem/Ay/Hafta görünüm anahtarı (spec §6.5). "Gün" kullanıcı isteğiyle
+ * kaldırıldı (2026-09-07) — Ay/Gün ayrıntı paneli (alttaki yatay çizelge)
+ * zaten tek bir günü göstermeye yarıyor, ayrı bir "Gün" görünümü gereksiz
+ * bulundu. Hafta henüz yok (devre dışı, "Yakında"); Ay ve Dönem Faz 5'te bağlandı.
  */
 export function ViewSwitcher({ active = "ay" }: { active?: string }) {
   return (

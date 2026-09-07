@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { COURSE_LAYER_NAMESPACE } from "@/lib/calendar/course-layers";
 
@@ -42,6 +42,45 @@ const WEEKDAY_LABELS: Record<number, string> = {
   5: "Cum",
   6: "Cmt",
 };
+
+/** İşaretli (takvimde görüntülenen) öğeleri üste, alfabetik sıralı sabitler. */
+function sortPinnedFirst<T>(items: T[], label: (item: T) => string, selected: (item: T) => boolean): T[] {
+  return [...items].sort((a, b) => {
+    const selectionDiff = Number(selected(b)) - Number(selected(a));
+    if (selectionDiff !== 0) return selectionDiff;
+    return label(a).localeCompare(label(b), "tr");
+  });
+}
+
+/** Tik kutulu satır — Sınıflar/Derslikler/Dersler sekmelerinin üçünde de aynı desen. */
+function CourseLayerCheckboxRow({
+  active,
+  onToggle,
+  children,
+}: {
+  active: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <li>
+      <label
+        className={[
+          "flex w-full cursor-pointer items-center gap-2 py-1.5",
+          active ? "font-semibold text-purple-700 dark:text-purple-400" : "",
+        ].join(" ")}
+      >
+        <input
+          type="checkbox"
+          checked={active}
+          onChange={onToggle}
+          className="shrink-0 accent-purple-600"
+        />
+        <span className="min-w-0 flex-1 truncate">{children}</span>
+      </label>
+    </li>
+  );
+}
 
 /**
  * Spec §6.2: Sınıflar/Derslikler/Dersler/Toplu Çizelge sekmeleri.
@@ -87,22 +126,22 @@ export function CourseSchedulePanel() {
     };
   }, []);
 
-  function currentLayerValue(namespace: string): string | null {
+  function isCourseLayerActive(namespace: string, value: string): boolean {
     const layersParam = searchParams.get("layers");
-    if (!layersParam) return null;
-    const prefix = `${namespace}:`;
-    const match = layersParam.split(",").find((l) => l.startsWith(prefix));
-    return match ? match.slice(prefix.length) : null;
+    if (!layersParam) return false;
+    return layersParam.split(",").includes(`${namespace}:${value}`);
   }
 
-  /** Yeni bir ders programı katmanı seçer — aynı anda en fazla bir tane aktif olabilir. */
-  function selectCourseLayer(namespace: string, value: string) {
+  /**
+   * Bir ders programı katmanını açar/kapatır. Diğer katmanlar gibi bağımsız
+   * çoklu seçime izin verir — birden fazla sınıf/derslik/ders aynı anda
+   * takvimde üst üste görüntülenebilir (bkz. DECISIONS.md 2026-09-06).
+   */
+  function toggleCourseLayer(namespace: string, value: string) {
+    const id = `${namespace}:${value}`;
     const current = searchParams.get("layers");
-    const others = (current ? current.split(",") : []).filter(
-      (l) => !Object.values(COURSE_LAYER_NAMESPACE).some((ns) => l.startsWith(`${ns}:`))
-    );
-    const isAlreadySelected = currentLayerValue(namespace) === value;
-    const next = isAlreadySelected ? others : [...others, `${namespace}:${value}`];
+    const layers = current ? current.split(",") : [];
+    const next = layers.includes(id) ? layers.filter((l) => l !== id) : [...layers, id];
 
     const params = new URLSearchParams(searchParams.toString());
     if (next.length > 0) params.set("layers", next.sort().join(","));
@@ -127,6 +166,13 @@ export function CourseSchedulePanel() {
 
   return (
     <div className="flex flex-col gap-2 text-sm">
+      <input
+        type="text"
+        placeholder="Ders programında ara..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-900"
+      />
       <div className="flex flex-wrap gap-1 border-b border-gray-200 pb-2 dark:border-gray-800">
         {TABS.map((t) => (
           <button
@@ -147,24 +193,27 @@ export function CourseSchedulePanel() {
 
       {tab === "siniflar" && (
         <ul className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
-          {imports.map((imp) => {
-            const active = currentLayerValue(COURSE_LAYER_NAMESPACE.import) === imp.id;
+          {sortPinnedFirst(
+            imports.filter(
+              (imp) =>
+                (imp.sourceLabel ?? "").toLowerCase().includes(searchLower) ||
+                (imp.termCode ?? "").toLowerCase().includes(searchLower)
+            ),
+            (imp) => imp.sourceLabel ?? "(adsız)",
+            (imp) => isCourseLayerActive(COURSE_LAYER_NAMESPACE.import, imp.id)
+          ).map((imp) => {
+            const active = isCourseLayerActive(COURSE_LAYER_NAMESPACE.import, imp.id);
             return (
-              <li key={imp.id}>
-                <button
-                  type="button"
-                  onClick={() => selectCourseLayer(COURSE_LAYER_NAMESPACE.import, imp.id)}
-                  className={[
-                    "w-full py-1.5 text-left hover:underline",
-                    active ? "font-semibold text-purple-700 dark:text-purple-400" : "",
-                  ].join(" ")}
-                >
-                  {imp.sourceLabel ?? "(adsız)"}
-                  <span className="ml-1 text-xs text-gray-400">
-                    {imp.termCode ? `· ${imp.termCode}` : ""} · {imp.parsedSessionCount ?? 0} oturum
-                  </span>
-                </button>
-              </li>
+              <CourseLayerCheckboxRow
+                key={imp.id}
+                active={active}
+                onToggle={() => toggleCourseLayer(COURSE_LAYER_NAMESPACE.import, imp.id)}
+              >
+                {imp.sourceLabel ?? "(adsız)"}
+                <span className="ml-1 text-xs text-gray-400">
+                  {imp.termCode ? `· ${imp.termCode}` : ""} · {imp.parsedSessionCount ?? 0} oturum
+                </span>
+              </CourseLayerCheckboxRow>
             );
           })}
           {imports.length === 0 && (
@@ -177,71 +226,51 @@ export function CourseSchedulePanel() {
 
       {tab === "derslikler" && (
         <div className="flex flex-col gap-2">
-          <input
-            type="text"
-            placeholder="Derslik ara..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-900"
-          />
           <ul className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
-            {distinctRooms
-              .filter((room) => room.toLowerCase().includes(searchLower))
-              .map((room) => {
-                const active = currentLayerValue(COURSE_LAYER_NAMESPACE.room) === room;
-                return (
-                  <li key={room}>
-                    <button
-                      type="button"
-                      onClick={() => selectCourseLayer(COURSE_LAYER_NAMESPACE.room, room)}
-                      className={[
-                        "w-full py-1.5 text-left hover:underline",
-                        active ? "font-semibold text-purple-700 dark:text-purple-400" : "",
-                      ].join(" ")}
-                    >
-                      {room}
-                    </button>
-                  </li>
-                );
-              })}
+            {sortPinnedFirst(
+              distinctRooms.filter((room) => room.toLowerCase().includes(searchLower)),
+              (room) => room,
+              (room) => isCourseLayerActive(COURSE_LAYER_NAMESPACE.room, room)
+            ).map((room) => {
+              const active = isCourseLayerActive(COURSE_LAYER_NAMESPACE.room, room);
+              return (
+                <CourseLayerCheckboxRow
+                  key={room}
+                  active={active}
+                  onToggle={() => toggleCourseLayer(COURSE_LAYER_NAMESPACE.room, room)}
+                >
+                  {room}
+                </CourseLayerCheckboxRow>
+              );
+            })}
           </ul>
         </div>
       )}
 
       {tab === "dersler" && (
         <div className="flex flex-col gap-2">
-          <input
-            type="text"
-            placeholder="Ders kodu/adı ara..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-700 dark:bg-gray-900"
-          />
           <ul className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
-            {distinctCourses
-              .filter(
+            {sortPinnedFirst(
+              distinctCourses.filter(
                 (c) =>
                   c.code.toLowerCase().includes(searchLower) ||
                   (c.name ?? "").toLowerCase().includes(searchLower)
-              )
-              .map((course) => {
-                const active = currentLayerValue(COURSE_LAYER_NAMESPACE.course) === course.code;
-                return (
-                  <li key={course.code}>
-                    <button
-                      type="button"
-                      onClick={() => selectCourseLayer(COURSE_LAYER_NAMESPACE.course, course.code)}
-                      className={[
-                        "w-full py-1.5 text-left hover:underline",
-                        active ? "font-semibold text-purple-700 dark:text-purple-400" : "",
-                      ].join(" ")}
-                    >
-                      {course.code}
-                      {course.name && <span className="ml-1 text-xs text-gray-400">{course.name}</span>}
-                    </button>
-                  </li>
-                );
-              })}
+              ),
+              (c) => c.code,
+              (c) => isCourseLayerActive(COURSE_LAYER_NAMESPACE.course, c.code)
+            ).map((course) => {
+              const active = isCourseLayerActive(COURSE_LAYER_NAMESPACE.course, course.code);
+              return (
+                <CourseLayerCheckboxRow
+                  key={course.code}
+                  active={active}
+                  onToggle={() => toggleCourseLayer(COURSE_LAYER_NAMESPACE.course, course.code)}
+                >
+                  {course.code}
+                  {course.name && <span className="ml-1 text-xs text-gray-400">{course.name}</span>}
+                </CourseLayerCheckboxRow>
+              );
+            })}
           </ul>
         </div>
       )}
@@ -259,7 +288,12 @@ export function CourseSchedulePanel() {
             </thead>
             <tbody>
               {sessions
-                .slice()
+                .filter(
+                  (s) =>
+                    (s.courseCode ?? "").toLowerCase().includes(searchLower) ||
+                    (s.courseName ?? "").toLowerCase().includes(searchLower) ||
+                    (s.room ?? "").toLowerCase().includes(searchLower)
+                )
                 .sort((a, b) => (a.weekday ?? 0) - (b.weekday ?? 0) || (a.startTime ?? "").localeCompare(b.startTime ?? ""))
                 .map((s) => (
                   <tr key={s.id} className="border-b border-gray-100 dark:border-gray-900">

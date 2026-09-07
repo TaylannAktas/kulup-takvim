@@ -1,11 +1,12 @@
 import "server-only";
-import { eq, ne } from "drizzle-orm";
+import { and, eq, gte, lte, ne, or } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { academicCalendarEntries, examSessions, clubEvents, courseSessions } from "@/lib/db/schema";
+import { academicCalendarEntries, examSessions, clubEvents, courseSessions, dayNotes } from "@/lib/db/schema";
 import {
   academicCalendarKindFromCategory,
   examTypeKind,
   clubEventKindFromStatus,
+  courseSessionKind,
   type EventKind,
 } from "@/lib/calendar/color-system";
 import { makeLayerId, isLayerActive } from "@/lib/calendar/layers";
@@ -13,6 +14,8 @@ import { FACULTY_CODES } from "@/lib/scrapers/exam-schedule/fetch";
 import { toClubTime } from "@/lib/calendar/date-utils";
 import { hasAnyConflict, type ConflictFlags } from "@/lib/calendar/conflict-detection";
 import { COURSE_LAYER_NAMESPACE } from "@/lib/calendar/course-layers";
+import { categoryHiddenLayerId } from "@/lib/calendar/category-layers";
+import { formatDateOnly } from "@/lib/calendar/day-notes";
 
 export type CalendarBarItem = {
   id: string;
@@ -34,6 +37,7 @@ const DOMINANCE_ORDER: EventKind[] = [
   "academic_ders_donemi",
   "academic_kayit",
   "academic_idari",
+  "course_session_lab",
   "course_session",
   "club_event_onaylandi",
   "club_event_planlaniyor",
@@ -61,27 +65,27 @@ function toDateOnly(d: Date): Date {
 
 /**
  * Ders programı katmanları (CourseSchedulePanel'in "Sınıflar/Derslikler/Dersler"
- * sekmelerinden birinden seçim). Diğer katmanlardan farklı olarak aynı anda
- * en fazla BİR ders programı katmanı aktif olabilir — aksi halde "toplu
- * çizelge" anlamsızlaşır; panel bunu tek seçimli (radio benzeri) davranışla
- * sağlar, burada sadece bulunan ilk eşleşme kullanılır.
+ * sekmelerinden seçimler). Birden fazla katman aynı anda aktif olabilir —
+ * kullanıcı birden fazla sınıfın/derslik/dersin programını üst üste
+ * görüntüleyebilir; bar üretimi hepsinin oturumlarını birleştirir (bkz. aşağı).
  */
-function parseActiveCourseLayer(
+export function parseActiveCourseLayers(
   activeLayers: Set<string>
-): { type: keyof typeof COURSE_LAYER_NAMESPACE; value: string } | null {
+): Array<{ type: keyof typeof COURSE_LAYER_NAMESPACE; value: string }> {
+  const result: Array<{ type: keyof typeof COURSE_LAYER_NAMESPACE; value: string }> = [];
   for (const layer of activeLayers) {
     for (const [type, namespace] of Object.entries(COURSE_LAYER_NAMESPACE)) {
       const prefix = `${namespace}:`;
       if (layer.startsWith(prefix)) {
-        return { type: type as keyof typeof COURSE_LAYER_NAMESPACE, value: layer.slice(prefix.length) };
+        result.push({ type: type as keyof typeof COURSE_LAYER_NAMESPACE, value: layer.slice(prefix.length) });
       }
     }
   }
-  return null;
+  return result;
 }
 
 /** ISO hafta günü (Pazartesi=1 … Pazar=7) — course_sessions.weekday ile aynı kural. */
-function isoWeekday(date: Date): number {
+export function isoWeekday(date: Date): number {
   const day = date.getDay();
   return day === 0 ? 7 : day;
 }
@@ -91,15 +95,47 @@ function isoWeekday(date: Date): number {
  * takvim + sınav programı katmanlarını, sol panellerdeki aktif filtrelere göre
  * süzülmüş bar listesi olarak döner.
  *
- * Küçük tablo boyutu (bkz. DECISIONS.md — bir dönem birkaç yüz satır) nedeniyle
- * tarih aralığı ve filtre süzmesi SQL yerine bellekte yapılıyor; sorgu karmaşıklığı
- * gereksiz.
+ * Akademik takvim ve kulüp etkinlikleri küçük tablolar (bkz. DECISIONS.md) —
+ * onların filtre süzmesi SQL yerine bellekte yapılıyor. `exam_sessions` ise
+ * gerçekte binlerce satıra çıkabiliyor (senkron dedup sorunu, bkz. DECISIONS.md
+ * "Bilinen veri sorunları"); o yüzden tarih aralığı bu tablo için DB'de
+ * filtreleniyor — tüm tabloyu çekip render etmek 20+ saniyeye çıkıyordu.
  */
+/** Bir günün akademik takvim kaydı BAŞLANGICI ve/veya BİTİŞİ olabileceğini taşır. */
+export type AcademicEdge = { start?: EventKind; end?: EventKind };
+
+export type MonthCalendarData = {
+  bars: CalendarBarItem[];
+  /**
+   * Akademik takvim artık şerit/bar DEĞİL, hücre bazlı dolgu da DEĞİL —
+   * sadece kaydın BAŞLADIĞI günün sol kenarına, BİTTİĞİ günün sağ kenarına
+   * renkli bir çerçeve (kullanıcı isteği, 2026-09-08). Önceki tasarım
+   * (kapsadığı HER günü çerçeveliyordu) bazı kayıtlar 150+ gün sürdüğü için
+   * kendi başına kalabalık yaratıyordu — "YYYY-MM-DD" → AcademicEdge eşlemesi.
+   */
+  academicEdges: Map<string, AcademicEdge>;
+  /**
+   * Aynı bilginin kapsanan HER günü içeren hâli — ay ızgarası artık bunu
+   * KULLANMIYOR (yukarıdaki not), ama dönem ısı haritası (`/calendar/term`)
+   * hâlâ tüm dönem boyunca günlük yoğunluk göstermek istiyor, oradaki tek
+   * tüketici bu alan.
+   */
+  academicDayKinds: Map<string, EventKind>;
+};
+
+/** Bir günde birden fazla akademik kayıt çakışırsa çerçeve rengi için öncelik. */
+const ACADEMIC_FRAME_PRIORITY: EventKind[] = [
+  "academic_tatil",
+  "academic_ders_donemi",
+  "academic_kayit",
+  "academic_idari",
+];
+
 export async function getMonthCalendarBars(
   gridStart: Date,
   gridEnd: Date,
   activeLayers: Set<string>
-): Promise<CalendarBarItem[]> {
+): Promise<MonthCalendarData> {
   const activeCategoryFilters = ["SINAV", "TATIL", "DERS_DONEMI", "KAYIT", "IDARI"].filter((cat) =>
     isLayerActive(activeLayers, makeLayerId("academic-category", cat))
   );
@@ -110,15 +146,39 @@ export async function getMonthCalendarBars(
     isLayerActive(activeLayers, makeLayerId("exam-type", type))
   );
 
-  const [academicRows, examRows, eventRows] = await Promise.all([
-    db.select().from(academicCalendarEntries).where(eq(academicCalendarEntries.isActive, true)),
-    db.select().from(examSessions).where(eq(examSessions.isActive, true)),
-    db.select().from(clubEvents).where(ne(clubEvents.status, "iptal")),
-  ]);
+  // Sol paneldeki ("Ders Programı"/"Sınav Programı"/"Akademik Takvim") ana tik
+  // kutuları — kendi alt filtreleri ne olursa olsun bütün kategoriyi gizler.
+  // Boş katman = gizli DEĞİL (bkz. category-layers.ts'teki "hidden" adlandırma
+  // gerekçesi): varsayılan olarak üçü de görünür.
+  const academicHidden = isLayerActive(activeLayers, categoryHiddenLayerId("academic"));
+  const examHidden = isLayerActive(activeLayers, categoryHiddenLayerId("exam"));
+  const courseHidden = isLayerActive(activeLayers, categoryHiddenLayerId("course"));
 
   const bars: CalendarBarItem[] = [];
   const start = toDateOnly(gridStart);
   const end = toDateOnly(gridEnd);
+
+  // exam_sessions binlerce satıra kadar büyüyebiliyor (bkz. DECISIONS.md); ay
+  // ızgarasında görünmeyecek satırları belleğe hiç çekmemek için DB'de tarih
+  // aralığıyla sınırlıyoruz — önceden tüm tablo çekilip bellekte filtreleniyordu.
+  // Kategori gizliyse sorguyu hiç atmıyoruz.
+  const [academicRows, examRows, eventRows] = await Promise.all([
+    academicHidden
+      ? Promise.resolve([])
+      : db.select().from(academicCalendarEntries).where(eq(academicCalendarEntries.isActive, true)),
+    examHidden
+      ? Promise.resolve([])
+      : db
+          .select()
+          .from(examSessions)
+          .where(and(eq(examSessions.isActive, true), gte(examSessions.examDate, start), lte(examSessions.examDate, end))),
+    db.select().from(clubEvents).where(ne(clubEvents.status, "iptal")),
+  ]);
+
+  const academicEdges = new Map<string, AcademicEdge>();
+  const academicDayKinds = new Map<string, EventKind>();
+  const betterKind = (a: EventKind, b: EventKind | undefined) =>
+    !b || ACADEMIC_FRAME_PRIORITY.indexOf(a) < ACADEMIC_FRAME_PRIORITY.indexOf(b);
 
   for (const row of academicRows) {
     const effective = row.categoryOverride ?? row.category;
@@ -128,17 +188,36 @@ export async function getMonthCalendarBars(
     const rowEnd = row.endDate ?? row.startDate;
     if (!rowStart || !rowEnd) continue;
 
-    const clippedStart = rowStart < start ? start : toDateOnly(rowStart);
-    const clippedEnd = rowEnd > end ? end : toDateOnly(rowEnd);
-    if (clippedStart > clippedEnd) continue;
+    const rowStartOnly = toDateOnly(rowStart);
+    const rowEndOnly = toDateOnly(rowEnd);
+    if (rowEndOnly < start || rowStartOnly > end) continue; // görünür ızgaranın tamamen dışında
 
-    bars.push({
-      id: `academic:${row.id}`,
-      label: row.description,
-      kind: academicCalendarKindFromCategory(effective),
-      startDate: clippedStart,
-      endDate: clippedEnd,
-    });
+    const kind = academicCalendarKindFromCategory(effective);
+
+    // Kaydın gerçek başlangıcı görünür ızgarada mı — değilse (ay başından
+    // önce başladıysa) bu ayda görünen bir "başlangıç kenarı" yok, kayıt
+    // zaten devam ediyor demektir; aynı mantık bitiş için de geçerli.
+    if (rowStartOnly >= start && rowStartOnly <= end) {
+      const iso = formatDateOnly(rowStartOnly);
+      const entry = academicEdges.get(iso) ?? {};
+      if (betterKind(kind, entry.start)) entry.start = kind;
+      academicEdges.set(iso, entry);
+    }
+    if (rowEndOnly >= start && rowEndOnly <= end) {
+      const iso = formatDateOnly(rowEndOnly);
+      const entry = academicEdges.get(iso) ?? {};
+      if (betterKind(kind, entry.end)) entry.end = kind;
+      academicEdges.set(iso, entry);
+    }
+
+    // Dönem ısı haritası için: kapsanan HER gün (bkz. academicDayKinds yorumu).
+    const clippedStart = rowStartOnly < start ? start : rowStartOnly;
+    const clippedEnd = rowEndOnly > end ? end : rowEndOnly;
+    for (let d = new Date(clippedStart); d <= clippedEnd; d.setDate(d.getDate() + 1)) {
+      const iso = formatDateOnly(d);
+      const existing = academicDayKinds.get(iso);
+      if (!existing || betterKind(kind, existing)) academicDayKinds.set(iso, kind);
+    }
   }
 
   for (const row of examRows) {
@@ -182,20 +261,31 @@ export async function getMonthCalendarBars(
     });
   }
 
-  // Ders programı: CourseSchedulePanel'den bir sınıf/derslik/ders seçiliyse,
-  // o seçime uyan oturumlar haftalık desenden görünür aralıktaki her tarihe
-  // "çoğaltılarak" bara çevrilir (course_sessions belirli bir tarihe değil
-  // haftanın gününe bağlıdır — bkz. lib/availability/overlap.ts'teki aynı varsayım).
-  const activeCourseLayer = parseActiveCourseLayer(activeLayers);
-  if (activeCourseLayer) {
-    const filter =
-      activeCourseLayer.type === "import"
-        ? eq(courseSessions.importId, activeCourseLayer.value)
-        : activeCourseLayer.type === "room"
-          ? eq(courseSessions.room, activeCourseLayer.value)
-          : eq(courseSessions.courseCode, activeCourseLayer.value);
+  // Ders programı: CourseSchedulePanel'den birden fazla sınıf/derslik/ders
+  // aynı anda seçilebilir — hepsinin oturumları birleştirilip (aynı oturum
+  // birden fazla seçime uyuyorsa tekilleştirilip) haftalık desenden görünür
+  // aralıktaki her tarihe "çoğaltılarak" bara çevrilir (course_sessions
+  // belirli bir tarihe değil haftanın gününe bağlıdır — bkz.
+  // lib/availability/overlap.ts'teki aynı varsayım).
+  const activeCourseLayers = parseActiveCourseLayers(activeLayers);
+  if (!courseHidden && activeCourseLayers.length > 0) {
+    const filters = activeCourseLayers.map((layer) =>
+      layer.type === "import"
+        ? eq(courseSessions.importId, layer.value)
+        : layer.type === "room"
+          ? eq(courseSessions.room, layer.value)
+          : eq(courseSessions.courseCode, layer.value)
+    );
 
-    const sessionRows = await db.select().from(courseSessions).where(filter);
+    const matchedRows = await db
+      .select()
+      .from(courseSessions)
+      .where(filters.length === 1 ? filters[0] : or(...filters));
+
+    const seenSessionIds = new Set<string>();
+    const sessionRows = matchedRows.filter((row) =>
+      seenSessionIds.has(row.id) ? false : (seenSessionIds.add(row.id), true)
+    );
 
     for (let day = new Date(start); day <= end; day.setDate(day.getDate() + 1)) {
       const weekday = isoWeekday(day);
@@ -203,9 +293,13 @@ export async function getMonthCalendarBars(
         if (session.weekday !== weekday) continue;
         const date = toDateOnly(day);
         bars.push({
+          // Ay ızgarasında sadece ders KODU gösteriliyor (kullanıcı isteği,
+          // 2026-09-07) — ne saat ne de uzun ders adı: küçük hücrede sadece
+          // kod (örn. "CHE105") okunaklı kalıyor. Saat ve ad zaten gün
+          // ayrıntı çizelgesinde (HourlyTimeline) görünüyor.
           id: `course:${session.id}:${date.toISOString().slice(0, 10)}`,
-          label: `${session.courseCode ?? "?"}${session.startTime ? ` ${session.startTime}` : ""}`,
-          kind: "course_session",
+          label: session.courseCode ?? "?",
+          kind: courseSessionKind(session.room),
           startDate: date,
           endDate: date,
         });
@@ -213,5 +307,22 @@ export async function getMonthCalendarBars(
     }
   }
 
-  return bars;
+  return { bars, academicEdges, academicDayKinds };
+}
+
+/**
+ * Görünür ay ızgarasında notu olan günlerin "YYYY-MM-DD" kümesi — gün
+ * hücresinin sağ üst köşesindeki sarı üçgen işareti için (spec §6.5 "Gün
+ * notu | Sarı köşe üçgeni", kullanıcı raporu üzerine eklendi, 2026-09-07;
+ * daha önce hiç bağlanmamıştı). Bar listesine dahil değil — bir çubuk değil,
+ * hücre başına tek bir işaret olduğu için ayrı, hafif bir sorgu.
+ */
+export async function getMonthNoteDates(gridStart: Date, gridEnd: Date): Promise<Set<string>> {
+  const start = toDateOnly(gridStart);
+  const end = toDateOnly(gridEnd);
+  const rows = await db
+    .select({ date: dayNotes.date })
+    .from(dayNotes)
+    .where(and(gte(dayNotes.date, start), lte(dayNotes.date, end)));
+  return new Set(rows.map((row) => formatDateOnly(row.date)));
 }
