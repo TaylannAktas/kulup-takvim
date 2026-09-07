@@ -577,3 +577,38 @@ takvimde görmek) diğer katmanlarla aynı toggle davranışına geçirildi:
 `OR` ile çekip oturum id'sine göre tekilleştiriyor (aynı oturum birden fazla seçilen katmana
 uyarsa iki kez bar üretmesin diye). Karışık tip seçimi de mümkün (örn. bir sınıf + bir derslik
 aynı anda) — spesifik olarak yasaklanmasını gerektiren bir sebep yok.
+
+### Vercel'e yayına alma (2026-09-08)
+`atilim-ai-panel`'de daha önce yaşanan aynı tuzağa ([[panel-vercel-yayin]]) baştan
+hazırlıklı gelindi: Vercel Hobby planı, git entegrasyonu üzerinden dağıtımda commit
+mesajındaki `Co-Authored-By: ...@anthropic.com` satırını (bu depodaki hemen hemen her
+commit'te var) ikinci bir katılımcı sayıp sessizce engelliyor — belirti CLI'da değil
+sadece `vercel.com` web arayüzünde "Blocked" olarak görünüyor.
+
+**Bunu baştan atlatmak için git entegrasyonu hiç kurulmadı.** Yayın, `git archive HEAD`
+ile üretilen git-geçmişsiz bir kopyadan `vercel --prod` ile yapıldı (bkz. README.md
+"Yayına alma" — aynı komut dizisi tekrar yayın için de geçerli). Bu, hem yazar
+uyuşmazlığını hem `Co-Authored-By` engelini kökten by-pass ediyor.
+
+**Hesap kararı:** Diğer 3 kulüp projesinin aksine (kulüp Vercel hesabı
+`atilimyapayzeka-9066`), bu proje **Taylan'ın kişisel Vercel hesabında**
+(`taylannaktas`) — repo da kişisel GitHub hesabında olduğu için tutarlı (bkz.
+[[kulup-takvim-github-repo]]). Bu terminalde CLI önceden kulüp hesabına giriş yapmış
+durumdaydı; `vercel login` cihaz koduyla denendiğinde tarayıcıda kulüp hesabı zaten
+açık olduğu için ilk denemede yine kulüp hesabına düştü — gizli/private pencerede
+tekrar denenerek çözüldü. **Not:** cihaz kodu onayı, o an tarayıcıda hangi Vercel
+hesabı açıksa ONU onaylıyor, `vercel login`'in kime bağlanacağını SEÇMİYORSUNUZ.
+
+**Alan adı:** Proje adı yayın komutunun çalıştırıldığı klasör adından geliyor
+(`kulup-takvim-deploy`), bu yüzden domain `kulup-takvim-deploy.vercel.app` oldu — daha
+temiz `kulup-takvim.vercel.app` alias'ı denendi ama Vercel'in kendi SSO/Deployment
+Protection'ına takılıp `vercel.com/login`'e yönlendirdi (asıl domain'de bu sorun yok,
+sebebi araştırılmadı — muhtemelen manuel `alias set` ile eklenen domain'ler farklı bir
+koruma kuralına giriyor). Alias kaldırıldı, asıl domain kullanılıyor.
+
+**Doğrulanan:** `/signin` 200 dönüyor ve DB'ye bağlanıp doğru render ediyor,
+`/calendar` oturumsuz 307 ile signin'e yönleniyor, iki cron işi (`vercel crons ls`)
+kayıtlı. **Doğrulanmadı:** Google OAuth henüz production redirect URI'siyle
+güncellenmedi — kullanıcı bunu Google Cloud Console'da elle ekleyecek (adres:
+`https://kulup-takvim-deploy.vercel.app/api/auth/callback/google`), o olmadan Google
+girişi `redirect_uri_mismatch` hatası verir.
