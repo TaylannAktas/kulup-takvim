@@ -1,0 +1,2 @@
+ALTER TABLE "timetable_imports" ADD COLUMN "periods" jsonb;--> statement-breakpoint
+CREATE UNIQUE INDEX "exam_sessions_scope_hash_idx" ON "exam_sessions" USING btree ("term_code","faculty_code","exam_type","source_hash");

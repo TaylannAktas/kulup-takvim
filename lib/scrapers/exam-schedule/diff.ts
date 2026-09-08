@@ -61,6 +61,10 @@ export async function diffExamSessions(
     const current = existingByHash.get(hash);
 
     if (!current) {
+      // onConflictDoNothing: yukarıdaki SELECT ile buradaki INSERT arasında
+      // çakışan bir sync çalıştırması aynı (termCode, facultyCode, examType,
+      // sourceHash) satırını araya sıkıştırmış olabilir — DB'deki unique index
+      // bu durumda insert'i sessizce iptal eder, `inserted` undefined döner.
       const [inserted] = await db
         .insert(examSessions)
         .values({
@@ -81,7 +85,16 @@ export async function diffExamSessions(
           lastSeenAt: now,
           isActive: true,
         })
+        .onConflictDoNothing({
+          target: [examSessions.termCode, examSessions.facultyCode, examSessions.examType, examSessions.sourceHash],
+        })
         .returning();
+
+      if (!inserted) {
+        unchangedCount += 1;
+        continue;
+      }
+
       insertedCount += 1;
       await recordChange({
         syncRunId,

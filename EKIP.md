@@ -147,13 +147,15 @@ fixtures/                 Gerçek kaynaklardan alınmış HTML örnekleri (testl
 
 Hepsinin tam gerekçesi `DECISIONS.md`'de tarih sırasıyla var; en önemlileri:
 
-- **`exam_sessions` kirli veri.** Gerçek üretimde 11.000+ satıra çıktı: ~3000
-  tekrar eden satır grubu + bir kayıtta yıl **2924** (bariz senkron/ayrıştırma
-  hatası). Sayfa performansı bu yüzden bir kez ciddi soruna yol açmıştı (tüm
-  tabloyu çekip render eden bir panel 20+ saniyeye çıkmıştı) — düzeltme yapıldı
-  (sorgular artık pencereli), ama **kök veri sorunu hâlâ temizlenmedi**. Senkron
-  koduna dedup/upsert eklenmesi ve `exam_date > 2100` gibi satırların
-  temizlenmesi kullanıcı onayı bekliyor.
+- **`exam_sessions` kirli verisi temizlendi (2026-09-08).** Kök neden: DB'de
+  unique constraint yokken `diffExamSessions`'ın "SELECT sonra INSERT"
+  kontrolü atomik değildi; 2026-09-05 gecesi çakışan iki senkron denemesi
+  2.988 grubu birebir kopyaladı (11.619 → 8.641 satır, 2.978 kopya silindi).
+  Artık `(term_code, faculty_code, exam_type, source_hash)` üzerinde unique
+  index var, insert `.onConflictDoNothing()` kullanıyor — bir daha oluşamaz.
+  Yıl **2924**'lü tek kayıt (`CE475`, kaynağın kendisinden geliyor gibi
+  duruyor, ayrıştırma hatası değil) `is_active=false` yapıldı, silinmedi. Tam
+  gerekçe ve doğrulama adımları `DECISIONS.md`'de.
 - **`date` sütunları + saat dilimi varsayımı doğrulanmadı.** `node-postgres`
   `date` sütununu SUNUCUNUN yerel saatine göre gece yarısı `Date` nesnesi olarak
   kuruyor; yazma tarafı (`lib/calendar/day-notes.ts` → `parseDateOnly`) bilinçli

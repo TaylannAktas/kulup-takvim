@@ -612,3 +612,34 @@ kayıtlı. **Doğrulanmadı:** Google OAuth henüz production redirect URI'siyle
 güncellenmedi — kullanıcı bunu Google Cloud Console'da elle ekleyecek (adres:
 `https://kulup-takvim-deploy.vercel.app/api/auth/callback/google`), o olmadan Google
 girişi `redirect_uri_mismatch` hatası verir.
+
+### `exam_sessions` kirli verisi temizlendi, kök neden bulundu (2026-09-08)
+2924-12-04 tarihli ("Bilinen veri sorunları" bölümüne bkz.) kaydın ve 2.988 duplike grubun
+kök nedeni tespit edildi: `diffExamSessions` (`lib/scrapers/exam-schedule/diff.ts`)
+"önce SELECT, sonra INSERT" mantığıyla çalışıyor ve tabloda bunu güvenceye alacak bir
+unique constraint yoktu. Üretim DB'sindeki zaman damgaları incelendiğinde **tüm**
+duplikeler (2.978 çift) 2026-09-05 gecesi birkaç saniyelik pencerelerde oluşmuş —
+yani gerçek bir cron/prod senkron hatası değil, aynı gece art arda/çakışan iki
+senkron tetiklemesinin (muhtemelen manuel "şimdi senkronize et" testi) klasik bir
+race condition'ı. `is_active` sütununun TAMAMI `true` çıktı (0 pasif kayıt) — bu da
+Vercel'e alınana kadar gerçek bir cron senkronunun hiç çalışmadığını doğruluyor.
+
+**Uygulanan düzeltme:**
+1. `lib/db/schema/exam-sessions.ts`'e `(term_code, faculty_code, exam_type,
+   source_hash)` üzerinde unique index eklendi (`drizzle/0002_...sql`).
+2. `diffExamSessions`'daki insert artık `.onConflictDoNothing()` kullanıyor — SELECT
+   ile INSERT arasına giren çakışan bir çalıştırma artık sessizce pas geçiliyor
+   (satır zaten `unchangedCount`'a sayılıyor).
+3. Tek seferlik temizlik: her duplike grupta `first_seen_at` en eski olan satır
+   tutuldu, **2.978 fazla satır silindi** (11.619 → 8.641). Silinmeden önce
+   etkilenen satırlar JSON'a yedeklendi (kullanıcı onayıyla, kalıcı bir konumda
+   saklanmadı — gerekirse tekrar üretilebilir, sorgu bu commit'te belgeli).
+4. `CE475` (`muh`/`arasinav`/`20242025guz`) kaydındaki `exam_date = 2924-12-04`
+   dedup sonrası tek kayıt kaldı; **silinmedi**, kullanıcı kararıyla `is_active =
+   false` yapıldı. Bu tarih iki kopyada da birebir aynıydı, yani ayrıştırma
+   kodunun ürettiği bir hata değil — kaynağın (okul sitesi) kendisinde böyle
+   görünüyor gibi duruyor, doğru tarih bilinmeden tahmini düzeltme yapılmadı.
+
+**Doğrulanan:** temizlik sonrası aktif satırlar arasında `(term_code, faculty_code,
+exam_type, source_hash)` bazında sıfır gerçek kopya var; `npx tsc --noEmit` ve
+`npx eslint` temiz.
