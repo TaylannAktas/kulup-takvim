@@ -45,19 +45,6 @@ export type EventStyle = {
   heatmapBackgroundClassName?: string;
   /** Kenarlık stili — spec'te "kesikli çerçeve" gibi ayırt edici detaylar var. */
   borderStyle?: "solid" | "dashed" | "outline";
-  /**
-   * Akademik takvim kaydının BAŞLADIĞI güne uygulanan, hücrenin SOL kenarına
-   * özel kalın renkli çerçeve (tam Tailwind sınıfı — Tailwind JIT çalışma
-   * zamanında `border-l-${renk}` gibi birleştirilmiş string'leri TANIMAZ,
-   * literal class adı kaynak kodda aynen durmalı). Kullanıcı isteğiyle
-   * (2026-09-08) tüm günü çerçevelemek yerine sadece başlangıç/bitiş
-   * kenarları işaretleniyor — çok günlü kayıtlarda (bazıları 150+ gün
-   * sürüyor) her günü çerçevelemek de kendi başına kalabalık yaratırdı.
-   * Sadece akademik kategoriler tanımlıyor.
-   */
-  frameStartClassName?: string;
-  /** Aynı kaydın BİTTİĞİ güne uygulanan, hücrenin SAĞ kenarına özel çerçeve. */
-  frameEndClassName?: string;
 };
 
 export const EVENT_STYLES: Record<EventKind, EventStyle> = {
@@ -90,8 +77,6 @@ export const EVENT_STYLES: Record<EventKind, EventStyle> = {
     cellBackgroundClassName: "bg-stone-100 dark:bg-stone-800/60",
     heatmapBackgroundClassName: "bg-stone-100 dark:bg-stone-800/60",
     borderStyle: "solid",
-    frameStartClassName: "border-l-4 border-l-stone-500 dark:border-l-stone-400",
-    frameEndClassName: "border-r-4 border-r-stone-500 dark:border-r-stone-400",
   },
   academic_ders_donemi: {
     label: "Dönem sınırı",
@@ -99,8 +84,6 @@ export const EVENT_STYLES: Record<EventKind, EventStyle> = {
     barClassName: "border-t-2 border-blue-600 text-blue-800",
     heatmapBackgroundClassName: "bg-blue-50 dark:bg-blue-950/30",
     borderStyle: "solid",
-    frameStartClassName: "border-l-4 border-l-blue-600 dark:border-l-blue-400",
-    frameEndClassName: "border-r-4 border-r-blue-600 dark:border-r-blue-400",
   },
   academic_kayit: {
     label: "Kayıt",
@@ -108,8 +91,6 @@ export const EVENT_STYLES: Record<EventKind, EventStyle> = {
     barClassName: "bg-blue-600 text-white",
     heatmapBackgroundClassName: "bg-cyan-50 dark:bg-cyan-950/30",
     borderStyle: "solid",
-    frameStartClassName: "border-l-4 border-l-cyan-600 dark:border-l-cyan-400",
-    frameEndClassName: "border-r-4 border-r-cyan-600 dark:border-r-cyan-400",
   },
   academic_idari: {
     label: "İdari",
@@ -117,8 +98,6 @@ export const EVENT_STYLES: Record<EventKind, EventStyle> = {
     barClassName: "bg-gray-400 text-gray-950",
     heatmapBackgroundClassName: "bg-gray-100 dark:bg-gray-800/40",
     borderStyle: "solid",
-    frameStartClassName: "border-l-4 border-l-gray-500 dark:border-l-gray-400",
-    frameEndClassName: "border-r-4 border-r-gray-500 dark:border-r-gray-400",
   },
   course_session: {
     label: "Ders",
@@ -190,10 +169,10 @@ export function clubEventKindFromStatus(
   }
 }
 
+export type AcademicCategory = "SINAV" | "TATIL" | "DERS_DONEMI" | "KAYIT" | "IDARI";
+
 /** academic_calendar_entries.category -> EventKind eşlemesi. */
-export function academicCalendarKindFromCategory(
-  category: "SINAV" | "TATIL" | "DERS_DONEMI" | "KAYIT" | "IDARI"
-): EventKind {
+export function academicCalendarKindFromCategory(category: AcademicCategory): EventKind {
   switch (category) {
     case "SINAV":
       return "exam_arasinav";
@@ -230,4 +209,67 @@ export function examTypeKind(examType: "arasinav" | "final" | "mazeret"): EventK
  */
 export function courseSessionKind(room: string | null): EventKind {
   return room && /lab/i.test(room) ? "course_session_lab" : "course_session";
+}
+
+/**
+ * Akademik kategori → saf RGB baz renk. Hücre fon harmanlaması ve çakışma
+ * segmentleri için tek kaynak (kullanıcı isteği, 2026-09-10 — kenar/çerçeve
+ * sistemi yerine tam-aralık fon rengi). SINAV da dahil — eski çerçeve
+ * sisteminde SINAV kategorisinin hiç görsel karşılığı yoktu (bir boşluktu),
+ * burada `exam_arasinav`'ın bar rengiyle tutarlı turuncu aile kullanılıyor.
+ */
+export const ACADEMIC_BASE_RGB: Record<AcademicCategory, [number, number, number]> = {
+  SINAV: [234, 88, 12], // orange-600
+  TATIL: [120, 113, 108], // stone-500
+  DERS_DONEMI: [37, 99, 235], // blue-600
+  KAYIT: [8, 145, 178], // cyan-600
+  IDARI: [107, 114, 128], // gray-500
+};
+
+/**
+ * Bir günü kapsayan akademik kategorilerin baz renklerini sıralı "over"
+ * alpha-composite ile karıştırır (basit, karmaşık renk-uzayı dönüşümü yok —
+ * kullanıcı onayı, 2026-09-10). Light/dark için ayrı alfa döner (dark modda
+ * biraz daha yüksek alfa — koyu zemin üstünde pastel tonun kaybolmaması
+ * için). Çağıran taraf bu değerleri CSS custom property olarak enjekte edip
+ * `bg-[var(--x)] dark:bg-[var(--y)]` gibi SABİT (literal) bir Tailwind
+ * arbitrary-value class'ıyla tüketir — class adının kendisi build zamanında
+ * taranabilir sabit bir string olduğu için Tailwind JIT'in "dinamik class
+ * üretemez" kısıtına takılmaz (kısıt class ADI için, CSS değişkeninin
+ * DEĞERİ için değil).
+ */
+export function blendAcademicColors(
+  categories: AcademicCategory[]
+): { light: string; dark: string } | undefined {
+  const unique = [...new Set(categories)];
+  if (unique.length === 0) return undefined;
+
+  const compositeOver = (alpha: number) => {
+    let r = 255;
+    let g = 255;
+    let b = 255;
+    let a = 0;
+    for (const cat of unique) {
+      const [cr, cg, cb] = ACADEMIC_BASE_RGB[cat];
+      const newA = alpha + a * (1 - alpha);
+      r = (cr * alpha + r * a * (1 - alpha)) / newA;
+      g = (cg * alpha + g * a * (1 - alpha)) / newA;
+      b = (cb * alpha + b * a * (1 - alpha)) / newA;
+      a = newA;
+    }
+    return `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, ${a.toFixed(3)})`;
+  };
+
+  return { light: compositeOver(0.16), dark: compositeOver(0.3) };
+}
+
+/** Çakışma segmentleri için saf (harmanlanmamış) renk — küçük çizgi işaretleri. */
+export function academicSolidRgb(category: AcademicCategory): string {
+  const [r, g, b] = ACADEMIC_BASE_RGB[category];
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+/** Tooltip için Türkçe kategori etiketi — mevcut EVENT_STYLES etiketleriyle aynı kaynak. */
+export function academicCategoryLabel(category: AcademicCategory): string {
+  return EVENT_STYLES[academicCalendarKindFromCategory(category)].label;
 }

@@ -1,9 +1,9 @@
 import Link from "next/link";
 
 const VIEWS = [
-  { key: "donem", label: "Dönem", available: true, href: "/calendar/term" },
-  { key: "ay", label: "Ay", available: true, href: "/calendar" },
-  { key: "hafta", label: "Hafta", available: false, href: "#" },
+  { key: "donem", label: "Dönem", available: true, basePath: "/calendar/term" },
+  { key: "ay", label: "Ay", available: true, basePath: "/calendar" },
+  { key: "hafta", label: "Hafta", available: false, basePath: "#" },
 ] as const;
 
 /**
@@ -12,7 +12,13 @@ const VIEWS = [
  * zaten tek bir günü göstermeye yarıyor, ayrı bir "Gün" görünümü gereksiz
  * bulundu. Hafta henüz yok (devre dışı, "Yakında"); Ay ve Dönem Faz 5'te bağlandı.
  */
-export function ViewSwitcher({ active = "ay" }: { active?: string }) {
+export function ViewSwitcher({ active = "ay", layersParam }: { active?: string; layersParam?: string }) {
+  // Aktif katman/filtre seçimi (ör. seçili sınıf/derslik/ders) görünümler
+  // arası geçişte KAYBOLMAMALI — kullanıcı raporu, 2026-09-10: Dönem'e
+  // geçince seçili filtreler sıfırlanıyordu çünkü href'ler `layers` query
+  // param'ını taşımıyordu.
+  const suffix = layersParam ? `?layers=${layersParam}` : "";
+
   return (
     <div className="flex overflow-hidden rounded border border-gray-300 text-sm dark:border-gray-700">
       {VIEWS.map((view, i) => {
@@ -32,7 +38,7 @@ export function ViewSwitcher({ active = "ay" }: { active?: string }) {
         }
 
         return (
-          <Link key={view.key} href={view.href} className={className}>
+          <Link key={view.key} href={`${view.basePath}${suffix}`} className={className}>
             {view.label}
           </Link>
         );

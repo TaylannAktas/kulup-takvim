@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { MonthGrid } from "@/components/calendar/MonthGrid";
+import { MonthScrollList } from "@/components/calendar/MonthScrollList";
 import { KeyboardGridNav } from "@/components/calendar/KeyboardGridNav";
 import { BottomToolbar } from "@/components/calendar/BottomToolbar";
 import { DayDetailPanelContainer } from "@/components/calendar/DayDetailPanelContainer";
@@ -17,6 +18,7 @@ import {
   nextMonth,
   previousMonth,
   todayInClubTime,
+  getTermMonthAnchors,
 } from "@/lib/calendar/date-utils";
 import { parseLayers, isLayerActive, HEATMAP_LAYER_ID } from "@/lib/calendar/layers";
 import { getMonthCalendarBars, getMonthNoteDates } from "@/lib/calendar/month-events";
@@ -31,6 +33,7 @@ type CalendarPageProps = {
     newEvent?: string;
     editEvent?: string;
     newNote?: string;
+    fullscreen?: string;
   }>;
 };
 
@@ -58,7 +61,15 @@ function monthParam(date: Date): string {
 }
 
 export default async function CalendarPage({ searchParams }: CalendarPageProps) {
-  const { month, layers: layersParam, day: dayParam, newEvent, editEvent, newNote } = await searchParams;
+  const {
+    month,
+    layers: layersParam,
+    day: dayParam,
+    newEvent,
+    editEvent,
+    newNote,
+    fullscreen,
+  } = await searchParams;
   const session = await auth();
   const canEdit = session?.user?.role === "admin" || session?.user?.role === "editor";
 
@@ -66,13 +77,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
   const activeLayers = parseLayers(new URLSearchParams(layersParam ? { layers: layersParam } : {}));
   const heatmapOn = isLayerActive(activeLayers, HEATMAP_LAYER_ID);
   const selectedDay = parseDayParam(dayParam);
-
-  const gridDays = getMonthGridDays(monthAnchor);
-  const [{ bars, academicEdges }, dayDetail, noteDates] = await Promise.all([
-    getMonthCalendarBars(gridDays[0], gridDays[gridDays.length - 1], activeLayers),
-    selectedDay ? getDayDetail(selectedDay, activeLayers) : Promise.resolve(null),
-    getMonthNoteDates(gridDays[0], gridDays[gridDays.length - 1]),
-  ]);
+  const fullscreenOn = fullscreen === "1";
 
   const layersSuffix = layersParam ? `&layers=${layersParam}` : "";
   const dayHrefBase = `/calendar?month=${monthParam(monthAnchor)}${layersSuffix}`;
@@ -82,91 +87,147 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
     ...(dayParam && { day: dayParam }),
   }).toString();
   const hrefSuffix = fullQueryString ? `?${fullQueryString}` : "";
+  const exitFullscreenHref = `/calendar?month=${monthParam(monthAnchor)}${layersSuffix}`;
+  const enterFullscreenHref = `${exitFullscreenHref}&fullscreen=1`;
+
+  // Fullscreen modda tek ayın verisi yerine, dönem görünümünün ESKİ (ay ay
+  // alt alta, dikey scroll'lu) davranışı için tüm dönem aralığının verisi
+  // paralel çekiliyor (kullanıcı isteği, 2026-09-10) — `MonthScrollList`
+  // ile render edilir, tek-ay verisine hiç ihtiyaç yok.
+  const termMonths = fullscreenOn
+    ? await Promise.all(
+        getTermMonthAnchors(todayInClubTime()).map(async (anchor) => {
+          const gridDays = getMonthGridDays(anchor);
+          const [{ bars, academicDayEntries }, noteDates] = await Promise.all([
+            getMonthCalendarBars(gridDays[0], gridDays[gridDays.length - 1], activeLayers),
+            getMonthNoteDates(gridDays[0], gridDays[gridDays.length - 1]),
+          ]);
+          return { anchor, bars, academicDayEntries, noteDates };
+        })
+      )
+    : null;
+
+  const gridDays = getMonthGridDays(monthAnchor);
+  const monthData = fullscreenOn
+    ? null
+    : await Promise.all([
+        getMonthCalendarBars(gridDays[0], gridDays[gridDays.length - 1], activeLayers),
+        selectedDay ? getDayDetail(selectedDay, activeLayers) : Promise.resolve(null),
+        getMonthNoteDates(gridDays[0], gridDays[gridDays.length - 1]),
+      ]);
+  const bars = monthData?.[0].bars ?? [];
+  const academicDayEntries = monthData?.[0].academicDayEntries;
+  const dayDetail = monthData?.[1] ?? null;
+  const noteDates = monthData?.[2];
 
   return (
     <div className="flex h-screen flex-col">
       <div className="flex items-center justify-between border-b border-gray-200 p-3 dark:border-gray-800">
         <div className="flex items-center gap-3">
-          <Link
-            href={`/calendar?month=${monthParam(previousMonth(monthAnchor))}${layersSuffix}`}
-            className="rounded px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-800"
-          >
-            ◀
-          </Link>
-          <h1 className="min-w-40 text-center text-lg font-semibold capitalize">
-            {formatMonthTitle(monthAnchor)}
-          </h1>
-          <Link
-            href={`/calendar?month=${monthParam(nextMonth(monthAnchor))}${layersSuffix}`}
-            className="rounded px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-800"
-          >
-            ▶
-          </Link>
-          <ViewSwitcher />
+          {fullscreenOn ? (
+            <h1 className="text-lg font-semibold">Ay Görünümü — Tam Ekran</h1>
+          ) : (
+            <>
+              <Link
+                href={`/calendar?month=${monthParam(previousMonth(monthAnchor))}${layersSuffix}`}
+                className="rounded px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                ◀
+              </Link>
+              <h1 className="min-w-40 text-center text-lg font-semibold capitalize">
+                {formatMonthTitle(monthAnchor)}
+              </h1>
+              <Link
+                href={`/calendar?month=${monthParam(nextMonth(monthAnchor))}${layersSuffix}`}
+                className="rounded px-2 py-1 hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                ▶
+              </Link>
+            </>
+          )}
+          <ViewSwitcher layersParam={layersParam} />
         </div>
-        <Link
-          href={`/calendar${layersParam ? `?layers=${layersParam}` : ""}`}
-          className="rounded border border-gray-300 px-3 py-1 text-sm dark:border-gray-700"
-        >
-          Bugün
-        </Link>
+        <div className="flex items-center gap-2">
+          {!fullscreenOn && (
+            <Link
+              href={`/calendar${layersParam ? `?layers=${layersParam}` : ""}`}
+              className="rounded border border-gray-300 px-3 py-1 text-sm dark:border-gray-700"
+            >
+              Bugün
+            </Link>
+          )}
+          <Link
+            href={fullscreenOn ? exitFullscreenHref : enterFullscreenHref}
+            className="rounded border border-gray-300 px-3 py-1 text-sm dark:border-gray-700"
+          >
+            {fullscreenOn ? "✕ Tam ekrandan çık" : "⛶ Tam ekran"}
+          </Link>
+        </div>
       </div>
       <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
-        <aside className="no-print flex w-full lg:w-80 shrink-0 flex-col overflow-hidden border-b border-gray-200 lg:border-b-0 lg:border-r dark:border-gray-800">
-          <SidebarAccordion
-            title="Ders Programı"
-            headerControl={<CategoryVisibilityCheckbox category="course" />}
-          >
-            <CourseSchedulePanel />
-          </SidebarAccordion>
-          <SidebarAccordion
-            title="Sınav Programı"
-            headerControl={<CategoryVisibilityCheckbox category="exam" />}
-          >
-            <ExamSchedulePanel
-              activeLayers={activeLayers}
-              monthParam={monthParam(monthAnchor)}
-              dayParam={dayParam}
-            />
-          </SidebarAccordion>
-          <SidebarAccordion
-            title="Akademik Takvim"
-            defaultOpen
-            headerControl={<CategoryVisibilityCheckbox category="academic" />}
-          >
-            <AcademicCalendarPanel
-              activeLayers={activeLayers}
-              monthParam={monthParam(monthAnchor)}
-              dayParam={dayParam}
-            />
-          </SidebarAccordion>
-        </aside>
-        <div className="flex flex-1 flex-col overflow-hidden min-h-[400px] lg:min-h-0">
-          <div className="flex-1 overflow-auto">
-            <KeyboardGridNav>
-              <MonthGrid
-                monthAnchor={monthAnchor}
-                bars={bars}
-                academicEdges={academicEdges}
-                noteDates={noteDates}
-                heatmapOn={heatmapOn}
-                dayHrefBase={dayHrefBase}
-                selectedDayIso={dayParam}
+        {!fullscreenOn && (
+          <aside className="no-print flex w-full lg:w-80 shrink-0 flex-col overflow-hidden border-b border-gray-200 lg:border-b-0 lg:border-r dark:border-gray-800">
+            <SidebarAccordion
+              title="Ders Programı"
+              headerControl={<CategoryVisibilityCheckbox category="course" />}
+            >
+              <CourseSchedulePanel />
+            </SidebarAccordion>
+            <SidebarAccordion
+              title="Sınav Programı"
+              headerControl={<CategoryVisibilityCheckbox category="exam" />}
+            >
+              <ExamSchedulePanel
+                activeLayers={activeLayers}
+                monthParam={monthParam(monthAnchor)}
+                dayParam={dayParam}
               />
-            </KeyboardGridNav>
-          </div>
-          {selectedDay && dayDetail && (
-            <DayDetailPanelContainer
-              dateIso={selectedDay.toISOString()}
-              summaryText={dayDetail.summaryText}
-              items={dayDetail.items}
-              periods={dayDetail.periods}
-              notes={dayDetail.notes}
-              affectingAcademicEntries={dayDetail.affectingAcademicEntries}
-              canEdit={canEdit}
-            />
+            </SidebarAccordion>
+            <SidebarAccordion
+              title="Akademik Takvim"
+              defaultOpen
+              headerControl={<CategoryVisibilityCheckbox category="academic" />}
+            >
+              <AcademicCalendarPanel
+                activeLayers={activeLayers}
+                monthParam={monthParam(monthAnchor)}
+                dayParam={dayParam}
+              />
+            </SidebarAccordion>
+          </aside>
+        )}
+        <div className="flex flex-1 flex-col overflow-hidden min-h-[400px] lg:min-h-0">
+          {fullscreenOn && termMonths ? (
+            <MonthScrollList months={termMonths} heatmapOn={heatmapOn} layersSuffix={layersSuffix} />
+          ) : (
+            <>
+              <div className="flex-1 overflow-auto">
+                <KeyboardGridNav>
+                  <MonthGrid
+                    monthAnchor={monthAnchor}
+                    bars={bars}
+                    academicDayEntries={academicDayEntries}
+                    noteDates={noteDates}
+                    heatmapOn={heatmapOn}
+                    dayHrefBase={dayHrefBase}
+                    selectedDayIso={dayParam}
+                  />
+                </KeyboardGridNav>
+              </div>
+              {selectedDay && dayDetail && (
+                <DayDetailPanelContainer
+                  dateIso={selectedDay.toISOString()}
+                  summaryText={dayDetail.summaryText}
+                  items={dayDetail.items}
+                  periods={dayDetail.periods}
+                  notes={dayDetail.notes}
+                  affectingAcademicEntries={dayDetail.affectingAcademicEntries}
+                  canEdit={canEdit}
+                />
+              )}
+              <BottomToolbar activeLayers={activeLayers} hrefSuffix={hrefSuffix} canEdit={canEdit} />
+            </>
           )}
-          <BottomToolbar activeLayers={activeLayers} hrefSuffix={hrefSuffix} canEdit={canEdit} />
         </div>
       </div>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { SearchResultItem } from "@/app/api/search/route";
 
 const TYPE_LABELS: Record<SearchResultItem["type"], string> = {
@@ -16,6 +16,7 @@ const TYPE_LABELS: Record<SearchResultItem["type"], string> = {
  */
 export function SearchPalette() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResultItem[]>([]);
@@ -87,7 +88,13 @@ export function SearchPalette() {
 
   function goToResult(result: SearchResultItem) {
     setOpen(false);
-    router.push(`/calendar?month=${result.month}&day=${result.day}`);
+    // Aktif katman/filtre seçimini (ör. seçili sınıf) korumak için mevcut
+    // URL'in `layers` param'ı da taşınıyor (kullanıcı raporu, 2026-09-10 —
+    // aynı sorun ViewSwitcher'da da vardı, orada da düzeltildi).
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("month", result.month);
+    params.set("day", result.day);
+    router.push(`/calendar?${params.toString()}`);
   }
 
   function handleInputKeyDown(e: React.KeyboardEvent) {

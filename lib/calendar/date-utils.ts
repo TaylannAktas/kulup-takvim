@@ -76,3 +76,28 @@ export function isWeekend(day: Date): boolean {
   const weekday = day.getDay();
   return weekday === 0 || weekday === 6;
 }
+
+/** Dönem görünümünün sabit bitiş noktası — kullanıcının verdiği sabit tarih (2026-09-08). */
+const TERM_RANGE_END_YEAR = 2027;
+const TERM_RANGE_END_MONTH_INDEX = 6; // 0-tabanlı: 6 = Temmuz
+
+/**
+ * "Dönem" olarak gösterilen ay listesi: verilen günün ayından sabit bitişe
+ * (Temmuz 2027) kadar, her ayın ilk günü. Hem kompakt Dönem görünümü
+ * (`app/calendar/term/page.tsx`) hem Ay görünümünün "Tam ekran" modu
+ * (`app/calendar/page.tsx`) aynı aralığı kullanır.
+ */
+export function getTermMonthAnchors(today: Date): Date[] {
+  const startAnchor = new Date(today.getFullYear(), today.getMonth(), 1);
+  const endAnchor = new Date(TERM_RANGE_END_YEAR, TERM_RANGE_END_MONTH_INDEX, 1);
+
+  const anchors: Date[] = [];
+  for (
+    let anchor = new Date(startAnchor);
+    anchor <= endAnchor;
+    anchor = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 1)
+  ) {
+    anchors.push(anchor);
+  }
+  return anchors;
+}

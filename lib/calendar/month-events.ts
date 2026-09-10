@@ -8,6 +8,7 @@ import {
   clubEventKindFromStatus,
   courseSessionKind,
   type EventKind,
+  type AcademicCategory,
 } from "@/lib/calendar/color-system";
 import { makeLayerId, isLayerActive } from "@/lib/calendar/layers";
 import { FACULTY_CODES } from "@/lib/scrapers/exam-schedule/fetch";
@@ -101,35 +102,25 @@ export function isoWeekday(date: Date): number {
  * "Bilinen veri sorunları"); o yüzden tarih aralığı bu tablo için DB'de
  * filtreleniyor — tüm tabloyu çekip render etmek 20+ saniyeye çıkıyordu.
  */
-/** Bir günün akademik takvim kaydı BAŞLANGICI ve/veya BİTİŞİ olabileceğini taşır. */
-export type AcademicEdge = { start?: EventKind; end?: EventKind };
+/**
+ * Bir akademik takvim kaydının bir günü kapsadığını taşır — artık kenar
+ * (başlangıç/bitiş) değil, kapsanan HER gün için biriktirilir (kullanıcı
+ * isteği, 2026-09-10: hücre fon rengi tam aralık boyunca değişsin, çakışan
+ * kayıtlar harmanlansın). Bir günde birden fazla kayıt çakışabileceği için
+ * değer bir dizi.
+ */
+export type AcademicDayEntry = {
+  id: string;
+  category: AcademicCategory;
+  kind: EventKind;
+  description: string;
+};
 
 export type MonthCalendarData = {
   bars: CalendarBarItem[];
-  /**
-   * Akademik takvim artık şerit/bar DEĞİL, hücre bazlı dolgu da DEĞİL —
-   * sadece kaydın BAŞLADIĞI günün sol kenarına, BİTTİĞİ günün sağ kenarına
-   * renkli bir çerçeve (kullanıcı isteği, 2026-09-08). Önceki tasarım
-   * (kapsadığı HER günü çerçeveliyordu) bazı kayıtlar 150+ gün sürdüğü için
-   * kendi başına kalabalık yaratıyordu — "YYYY-MM-DD" → AcademicEdge eşlemesi.
-   */
-  academicEdges: Map<string, AcademicEdge>;
-  /**
-   * Aynı bilginin kapsanan HER günü içeren hâli — ay ızgarası artık bunu
-   * KULLANMIYOR (yukarıdaki not), ama dönem ısı haritası (`/calendar/term`)
-   * hâlâ tüm dönem boyunca günlük yoğunluk göstermek istiyor, oradaki tek
-   * tüketici bu alan.
-   */
-  academicDayKinds: Map<string, EventKind>;
+  /** "YYYY-MM-DD" → o günü kapsayan akademik takvim kayıtları (çakışma dahil). */
+  academicDayEntries: Map<string, AcademicDayEntry[]>;
 };
-
-/** Bir günde birden fazla akademik kayıt çakışırsa çerçeve rengi için öncelik. */
-const ACADEMIC_FRAME_PRIORITY: EventKind[] = [
-  "academic_tatil",
-  "academic_ders_donemi",
-  "academic_kayit",
-  "academic_idari",
-];
 
 export async function getMonthCalendarBars(
   gridStart: Date,
@@ -175,10 +166,7 @@ export async function getMonthCalendarBars(
     db.select().from(clubEvents).where(ne(clubEvents.status, "iptal")),
   ]);
 
-  const academicEdges = new Map<string, AcademicEdge>();
-  const academicDayKinds = new Map<string, EventKind>();
-  const betterKind = (a: EventKind, b: EventKind | undefined) =>
-    !b || ACADEMIC_FRAME_PRIORITY.indexOf(a) < ACADEMIC_FRAME_PRIORITY.indexOf(b);
+  const academicDayEntries = new Map<string, AcademicDayEntry[]>();
 
   for (const row of academicRows) {
     const effective = row.categoryOverride ?? row.category;
@@ -192,31 +180,23 @@ export async function getMonthCalendarBars(
     const rowEndOnly = toDateOnly(rowEnd);
     if (rowEndOnly < start || rowStartOnly > end) continue; // görünür ızgaranın tamamen dışında
 
-    const kind = academicCalendarKindFromCategory(effective);
+    const entry: AcademicDayEntry = {
+      id: row.id,
+      category: effective,
+      kind: academicCalendarKindFromCategory(effective),
+      description: row.description,
+    };
 
-    // Kaydın gerçek başlangıcı görünür ızgarada mı — değilse (ay başından
-    // önce başladıysa) bu ayda görünen bir "başlangıç kenarı" yok, kayıt
-    // zaten devam ediyor demektir; aynı mantık bitiş için de geçerli.
-    if (rowStartOnly >= start && rowStartOnly <= end) {
-      const iso = formatDateOnly(rowStartOnly);
-      const entry = academicEdges.get(iso) ?? {};
-      if (betterKind(kind, entry.start)) entry.start = kind;
-      academicEdges.set(iso, entry);
-    }
-    if (rowEndOnly >= start && rowEndOnly <= end) {
-      const iso = formatDateOnly(rowEndOnly);
-      const entry = academicEdges.get(iso) ?? {};
-      if (betterKind(kind, entry.end)) entry.end = kind;
-      academicEdges.set(iso, entry);
-    }
-
-    // Dönem ısı haritası için: kapsanan HER gün (bkz. academicDayKinds yorumu).
+    // Hücre fon rengi kaydın kapladığı HER gün için değişir (kullanıcı
+    // isteği, 2026-09-10 — eski "sadece başlangıç/bitiş kenarı" tasarımının
+    // yerine).
     const clippedStart = rowStartOnly < start ? start : rowStartOnly;
     const clippedEnd = rowEndOnly > end ? end : rowEndOnly;
     for (let d = new Date(clippedStart); d <= clippedEnd; d.setDate(d.getDate() + 1)) {
       const iso = formatDateOnly(d);
-      const existing = academicDayKinds.get(iso);
-      if (!existing || betterKind(kind, existing)) academicDayKinds.set(iso, kind);
+      const list = academicDayEntries.get(iso) ?? [];
+      list.push(entry);
+      academicDayEntries.set(iso, list);
     }
   }
 
@@ -307,7 +287,7 @@ export async function getMonthCalendarBars(
     }
   }
 
-  return { bars, academicEdges, academicDayKinds };
+  return { bars, academicDayEntries };
 }
 
 /**
