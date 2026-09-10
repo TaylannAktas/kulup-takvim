@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { SearchResultItem } from "@/app/api/search/route";
 
@@ -13,8 +13,21 @@ const TYPE_LABELS: Record<SearchResultItem["type"], string> = {
 /**
  * Cmd/Ctrl+K arama paleti (spec §7.1). Global olarak bir kez render edilir
  * (bkz. app/layout.tsx) ve klavye kısayoluyla açılır.
+ *
+ * `useSearchParams` kullanan iç bileşen `Suspense` ile sarmalı — aksi halde
+ * (kullanıcı raporu, 2026-09-10) `/_not-found` gibi statik üretilen
+ * sayfaların Vercel build'i "should be wrapped in a suspense boundary"
+ * hatasıyla kırılıyor, global layout'ta render edildiği için.
  */
 export function SearchPalette() {
+  return (
+    <Suspense fallback={null}>
+      <SearchPaletteInner />
+    </Suspense>
+  );
+}
+
+function SearchPaletteInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
