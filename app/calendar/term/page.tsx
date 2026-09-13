@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { MonthGrid } from "@/components/calendar/MonthGrid";
+import { LayersPersistence } from "@/components/calendar/LayersPersistence";
 import { getMonthCalendarBars, getMonthNoteDates } from "@/lib/calendar/month-events";
 import { parseLayers, isLayerActive, HEATMAP_LAYER_ID } from "@/lib/calendar/layers";
 import { getMonthGridDays, formatMonthTitle, todayInClubTime, getTermMonthAnchors } from "@/lib/calendar/date-utils";
@@ -47,6 +48,7 @@ export default async function TermOverviewPage({ searchParams }: TermPageProps) 
 
   return (
     <div className="flex h-screen flex-col">
+      <LayersPersistence />
       <div className="flex items-center justify-between border-b border-gray-200 p-3 dark:border-gray-800">
         <div>
           <h1 className="text-lg font-semibold">Dönem Görünümü</h1>

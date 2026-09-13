@@ -8,6 +8,8 @@ import { ViewSwitcher } from "@/components/calendar/ViewSwitcher";
 import { EventModal } from "@/components/events/EventModal";
 import { DayNoteModal } from "@/components/notes/DayNoteModal";
 import { SidebarAccordion } from "@/components/sidebar/SidebarAccordion";
+import { ResizableSidebar } from "@/components/sidebar/ResizableSidebar";
+import { LayersPersistence } from "@/components/calendar/LayersPersistence";
 import { CategoryVisibilityCheckbox } from "@/components/sidebar/CategoryVisibilityCheckbox";
 import { AcademicCalendarPanel } from "@/components/sidebar/AcademicCalendarPanel";
 import { ExamSchedulePanel } from "@/components/sidebar/ExamSchedulePanel";
@@ -122,6 +124,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
 
   return (
     <div className="flex h-screen flex-col">
+      <LayersPersistence />
       <div className="flex items-center justify-between border-b border-gray-200 p-3 dark:border-gray-800">
         <div className="flex items-center gap-3">
           {fullscreenOn ? (
@@ -166,7 +169,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
       </div>
       <div className="flex flex-1 flex-col overflow-hidden lg:flex-row">
         {!fullscreenOn && (
-          <aside className="no-print flex w-full lg:w-80 shrink-0 flex-col overflow-hidden border-b border-gray-200 lg:border-b-0 lg:border-r dark:border-gray-800">
+          <ResizableSidebar>
             <SidebarAccordion
               title="Ders Programı"
               headerControl={<CategoryVisibilityCheckbox category="course" />}
@@ -194,7 +197,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                 dayParam={dayParam}
               />
             </SidebarAccordion>
-          </aside>
+          </ResizableSidebar>
         )}
         <div className="flex flex-1 flex-col overflow-hidden min-h-[400px] lg:min-h-0">
           {fullscreenOn && termMonths ? (
