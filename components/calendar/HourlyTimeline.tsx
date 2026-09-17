@@ -8,6 +8,10 @@ export type TimelineItem = {
   kind: EventKind;
   startMinutes: number;
   endMinutes: number;
+  /** Gün ayrıntısındaki tür bölümü — kapatılınca öğeler tek satıra indirilir (bkz. lib/calendar/grouping.ts). */
+  group?: "exam" | "course" | "event";
+  /** Hover metni: birleştirilmiş şube/salon dökümü. */
+  detail?: string;
 };
 
 /** Okulun gerçek "ders saati" (period) sınırı — bkz. lib/calendar/day-detail.ts. */
@@ -259,7 +263,7 @@ export function HourlyTimeline({
                   top: `${topPx}px`,
                   height: `${ROW_HEIGHT_PX - 3}px`,
                 }}
-                title={item.label}
+                title={item.detail ? `${item.label}\n${item.detail}` : item.label}
               >
                 {/* Icon + Label: always show both for accessibility (color-blind users, B&W printing) */}
                 <span>{style.icon}</span>

@@ -52,6 +52,8 @@ export function DayDetailPanelContainer({
 
   return (
     <DayDetailPanel
+      // Gün değişince bölümlerin aç/kapa durumu yeni günün yoğunluğuna göre sıfırlansın.
+      key={dateIso}
       date={new Date(dateIso)}
       summaryText={summaryText}
       items={items}

@@ -125,19 +125,18 @@ export function MonthGrid({
                     // kayıtları için). Hücreyi tam doldurup uzun bir çizgi gibi
                     // durmasınlar diye (kullanıcı isteği, 2026-09-07) sabit dar
                     // genişlikte, sola yaslı bir "rozet" olarak gösteriliyorlar.
-                    const isCourseBar = bar.kind === "course_session" || bar.kind === "course_session_lab";
                     return (
                       <div
                         key={bar.id}
-                        className={`pointer-events-auto truncate rounded px-1 text-[10px] leading-[1.1rem] ${style.barClassName} ${
-                          isCourseBar ? "w-16 justify-self-start" : ""
-                        }`}
+                        className={`pointer-events-auto truncate rounded px-1 text-[10px] leading-[1.1rem] ${style.barClassName}`}
                         style={{
                           gridColumnStart: startCol + 1,
                           gridColumnEnd: endCol + 2,
                           gridRow: lane + 1,
                         }}
-                        title={`${style.label}: ${bar.label}${bar.hasConflict ? " — çakışma var" : ""}`}
+                        title={`${style.label}: ${bar.label}${bar.hasConflict ? " — çakışma var" : ""}${
+                          bar.detail ? `\n${bar.detail}` : ""
+                        }`}
                       >
                         <span className="mr-0.5">{style.icon}</span>
                         {bar.label}

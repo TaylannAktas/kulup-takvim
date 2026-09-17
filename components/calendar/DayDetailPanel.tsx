@@ -1,7 +1,18 @@
 "use client";
 
+import { useState } from "react";
 import { HourlyTimeline, TimelineItem, TimelinePeriod } from "./HourlyTimeline";
 import type { EventKind } from "@/lib/calendar/color-system";
+import { collapseTimelineItems, type TimelineGroup } from "@/lib/calendar/grouping";
+
+const SECTIONS: Array<{ group: TimelineGroup; title: string; noun: string }> = [
+  { group: "event", title: "Etkinlikler", noun: "etkinlik" },
+  { group: "exam", title: "Sınavlar", noun: "sınav" },
+  { group: "course", title: "Dersler", noun: "ders" },
+];
+
+/** Bu kadar ya da daha az öğesi olan bölüm açık başlar. */
+const AUTO_EXPAND_LIMIT = 6;
 
 type DayDetailPanelProps = {
   date: Date;
@@ -31,6 +42,20 @@ export function DayDetailPanel({
   onAddEvent,
   onAddNote,
 }: DayDetailPanelProps) {
+  const sectionCounts = SECTIONS.map((s) => ({ ...s, count: items.filter((i) => i.group === s.group).length }));
+  // Kalabalık bölümler kapalı başlar (kullanıcı isteği, 2026-09-17): çizelge
+  // yüzlerce kutuya boğulmasın; kapalı bölüm silinmez, çakışan saatleri tek
+  // "N sınav" satırına iner. Etkinlikler her zaman açık başlar.
+  const [expanded, setExpanded] = useState<Record<TimelineGroup, boolean>>(() => ({
+    event: true,
+    exam: sectionCounts.find((s) => s.group === "exam")!.count <= AUTO_EXPAND_LIMIT,
+    course: sectionCounts.find((s) => s.group === "course")!.count <= AUTO_EXPAND_LIMIT,
+  }));
+  const visibleItems = SECTIONS.reduce(
+    (acc, s) => (expanded[s.group] ? acc : collapseTimelineItems(acc, s.group, s.noun)),
+    items
+  );
+
   const formattedDate = date.toLocaleDateString("tr-TR", {
     weekday: "long",
     year: "numeric",
@@ -84,9 +109,31 @@ export function DayDetailPanel({
       {/* Main content area: çizelge sola yaslı (kullanıcı isteği, 2026-09-07), sağda sabit
           genişlikte bir sütun — akademik takvim açıklaması (varsa) + Notlar (her zaman). */}
       <div className="flex flex-1 overflow-hidden">
-        <div className="min-w-0 flex-1 overflow-y-auto border-r border-gray-200 dark:border-gray-800">
+        <div className="flex min-w-0 flex-1 flex-col overflow-y-auto border-r border-gray-200 dark:border-gray-800">
+          {sectionCounts.some((s) => s.count > 0) && (
+            <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-gray-200 px-2 py-1.5 dark:border-gray-800">
+              {sectionCounts
+                .filter((s) => s.count > 0)
+                .map((s) => (
+                  <button
+                    key={s.group}
+                    type="button"
+                    onClick={() => setExpanded((prev) => ({ ...prev, [s.group]: !prev[s.group] }))}
+                    aria-pressed={expanded[s.group]}
+                    title={expanded[s.group] ? "Tek satıra topla" : "Tek tek göster"}
+                    className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition ${
+                      expanded[s.group]
+                        ? "border-blue-600 bg-blue-50 text-blue-800 dark:border-blue-500 dark:bg-blue-950/40 dark:text-blue-200"
+                        : "border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                    }`}
+                  >
+                    {expanded[s.group] ? "▾" : "▸"} {s.title} ({s.count})
+                  </button>
+                ))}
+            </div>
+          )}
           <HourlyTimeline
-            items={items}
+            items={visibleItems}
             periods={periods}
             academicEntries={affectingAcademicEntries.map((e) => ({
               id: e.id,

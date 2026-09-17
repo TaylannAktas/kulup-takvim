@@ -10,6 +10,14 @@ export type WeekBarLane = {
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+/** Küçük sayı önce yerleşir: kulüp etkinliği → sınav → akademik → ders. */
+function kindPriority(bar: CalendarBarItem): number {
+  if (bar.kind.startsWith("club_event")) return 0;
+  if (bar.kind.startsWith("exam")) return 1;
+  if (bar.kind.startsWith("academic")) return 2;
+  return 3;
+}
+
 function dayDiff(a: Date, b: Date): number {
   return Math.round((toMidnight(b).getTime() - toMidnight(a).getTime()) / MS_PER_DAY);
 }
@@ -39,19 +47,24 @@ export function assignWeekBarLanes(bars: CalendarBarItem[], weekStart: Date): We
     })
     .filter((entry) => entry.startCol <= entry.endCol && entry.endCol >= 0 && entry.startCol <= weekEndCol);
 
-  clipped.sort((a, b) => a.startCol - b.startCol || b.endCol - a.endCol);
+  // Kulüp etkinlikleri önce yerleşir (kullanıcı isteği, 2026-09-17): eskiden
+  // sıralama türe bakmıyordu, yoğun bir günde etkinlik görünür 3 kulvarın
+  // dışına, "+N daha"nın içine düşebiliyordu. Öncelik sırası bozulduğu için
+  // kulvar doluluğu "son bitiş sütunu" yerine gün gün tutuluyor.
+  clipped.sort(
+    (a, b) => kindPriority(a.bar) - kindPriority(b.bar) || a.startCol - b.startCol || b.endCol - a.endCol
+  );
 
-  const laneEndCols: number[] = [];
+  const laneOccupied: boolean[][] = [];
   const result: WeekBarLane[] = [];
 
   for (const entry of clipped) {
-    let lane = laneEndCols.findIndex((endCol) => endCol < entry.startCol);
+    let lane = laneOccupied.findIndex((cols) => cols.slice(entry.startCol, entry.endCol + 1).every((taken) => !taken));
     if (lane === -1) {
-      lane = laneEndCols.length;
-      laneEndCols.push(entry.endCol);
-    } else {
-      laneEndCols[lane] = entry.endCol;
+      lane = laneOccupied.length;
+      laneOccupied.push(Array(7).fill(false));
     }
+    for (let col = entry.startCol; col <= entry.endCol; col++) laneOccupied[lane][col] = true;
     result.push({ bar: entry.bar, startCol: entry.startCol, endCol: entry.endCol, lane });
   }
 

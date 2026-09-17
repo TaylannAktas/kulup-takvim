@@ -643,3 +643,48 @@ Vercel'e alınana kadar gerçek bir cron senkronunun hiç çalışmadığını d
 **Doğrulanan:** temizlik sonrası aktif satırlar arasında `(term_code, faculty_code,
 exam_type, source_hash)` bazında sıfır gerçek kopya var; `npx tsc --noEmit` ve
 `npx eslint` temiz.
+
+### Takvim sadeleştirme: şube/salon birleştirme + gün özeti (2026-09-18)
+
+**Sorun (kullanıcı, 2026-09-17):** "Çok fazla veriyi aynı takvim üzerinde
+göstermeye çalışıyoruz, karmaşık ve anlaşılmaz bir sistem oluyor." Gerçek
+veriyle doğrulandı: 9 Ocak 2025'te 130 sınav satırı tek hücreye düşüyordu
+(ENG101'in tek sınavı salon başına 32 satır), ders programı da haftalık tekrar
+ettiği için her hafta aynı 20+ çubuğu çiziyordu. Hücre başına 3 kulvar görünür
+olduğu için geri kalan her şey "+N daha" oluyordu.
+
+**Karar — gruplama SADECE gösterim anında, veri modeli değişmiyor.** Yeni
+`lib/calendar/grouping.ts` (server-only DEĞİL, istemci de kullanıyor):
+
+1. **Şube/salon birleştirme.** Aynı ders kodu + başlangıç + bitiş saati tek
+   kayıt: ay ızgarasında sayıya katkısı bir, gün ayrıntısında
+   `CHE105 · 3 şube` / `ENG101 · 32 salon`, hover'da tam döküm. Sınavlarda
+   ayrıca sınav türü, derslerde hafta günü gruplama anahtarına giriyor.
+2. **Ay ızgarasında gün özeti.** Tek tek ders/sınav çubuğu yerine gün başına
+   tür özeti: `Final · 37 sınav · 9.30–16.30`, `5 ders · 9.30–17.20`. Tek grup
+   varsa eski davranış gibi ders kodu yazılıyor. Tam liste gün ayrıntısında.
+3. **Kulüp etkinlikleri kulvar önceliği kazandı.** `week-bar-layout.ts`
+   sıralaması türe bakmıyordu, yoğun bir günde etkinlik "+N daha"nın içinde
+   kaybolabiliyordu — uygulamanın asıl amacı etkinlik planlamak olduğu için
+   artık etkinlik → sınav → akademik → ders sırasıyla yerleşiyor. Öncelik
+   sırası bozulduğu için kulvar doluluğu "son bitiş sütunu" yerine gün gün
+   tutuluyor (aksi halde greedy atama yanlış kulvar veriyordu).
+4. **Gün panelinde tür bölümleri.** "Etkinlikler / Sınavlar / Dersler (N)"
+   düğmeleri; 6'dan fazla öğesi olan bölüm kapalı başlıyor. Kapalı bölüm
+   GİZLENMİYOR — çakışan öğeler tek `N sınav` satırına iniyor ki o saatlerin
+   dolu olduğu görünmeye devam etsin.
+5. **Hazır görünümler** (alt araç çubuğu): Tümü / Etkinlik odaklı / Sınavlar /
+   Dersler. Yeni bir durum tutmuyor, sadece `category-hidden:*` katmanlarını
+   topluca ayarlıyor; sınıf/fakülte seçimleri korunuyor. Akademik takvim her
+   görünümde açık (tatil/sınav haftası bağlamı hep lazım).
+
+**Doğrulama:** gerçek Neon verisiyle (Ocak 2025 + bir sınıf programı) ay
+çubukları 130+ → gün başına 2; `getDayDetail` 9 Ocak'ta 37 gruplanmış sınav,
+ENG101 tek öğede 32 salon. 126 birim test geçiyor (`grouping.test.ts` ve
+etkinlik önceliği testleri bu turda eklendi), `npx tsc --noEmit` + `npx eslint .`
+temiz.
+
+**Not — bu turda ÇÖZÜLMEDİ:** `getDayDetail`'in sınav sorgusu yerel saat
+diliminde bir gün geriye kayıyor (UTC'de, yani Vercel'de doğru çalışıyor).
+Yukarıdaki "`date` sütunları + saat dilimi" açık işinin aynısı; gruplama
+değişikliğinden bağımsız, önceden de vardı.

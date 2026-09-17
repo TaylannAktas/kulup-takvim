@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { LayersDropdown } from "./LayersDropdown";
 import { ExportDropdown } from "./ExportDropdown";
+import { ViewPresets } from "./ViewPresets";
 
 type BottomToolbarProps = {
   activeLayers: Set<string>;
@@ -16,7 +17,8 @@ type BottomToolbarProps = {
  */
 export function BottomToolbar({ activeLayers, hrefSuffix, canEdit }: BottomToolbarProps) {
   return (
-    <div className="no-print flex items-center justify-end border-t border-gray-200 p-2 dark:border-gray-800">
+    <div className="no-print flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 p-2 dark:border-gray-800">
+      <ViewPresets />
       <div className="flex items-center gap-2">
         {canEdit ? (
           <>

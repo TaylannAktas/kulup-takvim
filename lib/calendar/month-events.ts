@@ -7,6 +7,7 @@ import {
   examTypeKind,
   clubEventKindFromStatus,
   courseSessionKind,
+  getEventStyle,
   type EventKind,
   type AcademicCategory,
 } from "@/lib/calendar/color-system";
@@ -17,6 +18,7 @@ import { hasAnyConflict, type ConflictFlags } from "@/lib/calendar/conflict-dete
 import { COURSE_LAYER_NAMESPACE } from "@/lib/calendar/course-layers";
 import { categoryHiddenLayerId } from "@/lib/calendar/category-layers";
 import { formatDateOnly } from "@/lib/calendar/day-notes";
+import { groupSessions, summaryBarLabel, summaryBarDetail } from "@/lib/calendar/grouping";
 
 export type CalendarBarItem = {
   id: string;
@@ -27,6 +29,8 @@ export type CalendarBarItem = {
   endDate: Date;
   /** Çakışma rozeti gösterilsin mi (spec §6.5 "Çakışma uyarısı — kırmızı ünlem"). */
   hasConflict?: boolean;
+  /** Özet çubuklarda hover metni — hangi dersler/sınavlar toplandı. */
+  detail?: string;
 };
 
 /** Hücre zemininin hangi türe göre tonlanacağını belirleyen öncelik sırası (spec §6.5). */
@@ -200,6 +204,12 @@ export async function getMonthCalendarBars(
     }
   }
 
+  // Sınavlar gün + tür başına TEK özet çubuğa indiriliyor (kullanıcı isteği,
+  // 2026-09-17): yoğun bir günde 100+ ayrı çubuk "+N daha"ya düşüp hücreyi
+  // okunmaz yapıyordu. Aynı ders + saatin salon/şube satırları önce tek
+  // sınavda toplanıyor (bkz. lib/calendar/grouping.ts); tek tek liste gün
+  // ayrıntısında.
+  const examsByDayAndType = new Map<string, Array<(typeof examRows)[number]>>();
   for (const row of examRows) {
     if (!row.examDate) continue;
     if (activeFaculties.length > 0 && !activeFaculties.includes(row.facultyCode as (typeof FACULTY_CODES)[number])) {
@@ -210,12 +220,22 @@ export async function getMonthCalendarBars(
     const date = toDateOnly(row.examDate);
     if (date < start || date > end) continue;
 
+    const key = `${formatDateOnly(date)}|${row.examType}`;
+    const list = examsByDayAndType.get(key);
+    if (list) list.push(row);
+    else examsByDayAndType.set(key, [row]);
+  }
+  for (const [key, rows] of examsByDayAndType) {
+    const kind = examTypeKind(rows[0].examType);
+    const date = toDateOnly(rows[0].examDate!);
+    const groups = groupSessions(rows);
     bars.push({
-      id: `exam:${row.id}`,
-      label: `${row.courseCode ?? "?"}${row.startTime ? ` ${row.startTime}` : ""}`,
-      kind: examTypeKind(row.examType),
+      id: `exams:${key}`,
+      label: summaryBarLabel(groups, "sınav", { prefix: getEventStyle(kind).label, withTime: true }),
+      kind,
       startDate: date,
       endDate: date,
+      detail: summaryBarDetail(groups),
     });
   }
 
@@ -267,23 +287,28 @@ export async function getMonthCalendarBars(
       seenSessionIds.has(row.id) ? false : (seenSessionIds.add(row.id), true)
     );
 
+    // Dersler de gün başına TEK özet çubuk (kullanıcı isteği, 2026-09-17):
+    // haftalık tekrar ettikleri için her hafta aynı 20+ çubuk etkinlikleri
+    // örtüyordu. Aynı dersin aynı saatteki şubeleri tek derste sayılıyor.
+    const groupsByWeekday = new Map<number, ReturnType<typeof groupSessions<(typeof sessionRows)[number]>>>();
+    for (let weekday = 1; weekday <= 7; weekday++) {
+      const rows = sessionRows.filter((session) => session.weekday === weekday);
+      if (rows.length > 0) groupsByWeekday.set(weekday, groupSessions(rows));
+    }
+
     for (let day = new Date(start); day <= end; day.setDate(day.getDate() + 1)) {
-      const weekday = isoWeekday(day);
-      for (const session of sessionRows) {
-        if (session.weekday !== weekday) continue;
-        const date = toDateOnly(day);
-        bars.push({
-          // Ay ızgarasında sadece ders KODU gösteriliyor (kullanıcı isteği,
-          // 2026-09-07) — ne saat ne de uzun ders adı: küçük hücrede sadece
-          // kod (örn. "CHE105") okunaklı kalıyor. Saat ve ad zaten gün
-          // ayrıntı çizelgesinde (HourlyTimeline) görünüyor.
-          id: `course:${session.id}:${date.toISOString().slice(0, 10)}`,
-          label: session.courseCode ?? "?",
-          kind: courseSessionKind(session.room),
-          startDate: date,
-          endDate: date,
-        });
-      }
+      const groups = groupsByWeekday.get(isoWeekday(day));
+      if (!groups) continue;
+      const date = toDateOnly(day);
+      const allLab = groups.every((g) => g.rows.every((r) => courseSessionKind(r.room) === "course_session_lab"));
+      bars.push({
+        id: `courses:${formatDateOnly(date)}`,
+        label: summaryBarLabel(groups, "ders"),
+        kind: allLab ? "course_session_lab" : "course_session",
+        startDate: date,
+        endDate: date,
+        detail: summaryBarDetail(groups),
+      });
     }
   }
 

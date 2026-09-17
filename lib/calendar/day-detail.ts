@@ -14,6 +14,7 @@ import { isLayerActive } from "@/lib/calendar/layers";
 import { categoryHiddenLayerId } from "@/lib/calendar/category-layers";
 import { parseActiveCourseLayers, isoWeekday } from "@/lib/calendar/month-events";
 import { DEFAULT_PERIODS } from "@/lib/calendar/default-periods";
+import { groupSessions, groupTimelineLabel, describeGroupRows } from "@/lib/calendar/grouping";
 import type { ParsedPeriod } from "@/lib/timetable-import/parse-svg-timetable";
 import type { TimelineItem, TimelinePeriod } from "@/components/calendar/HourlyTimeline";
 
@@ -173,14 +174,19 @@ export async function getDayDetail(date: Date, activeLayers: Set<string> = new S
     return start <= day && day <= end;
   });
 
-  const examItems: TimelineItem[] = dayExams
-    .filter((row) => row.startTime && row.endTime)
-    .map((row) => ({
-      id: `exam:${row.id}`,
-      label: row.courseCode ?? "Sınav",
-      kind: examTypeKind(row.examType),
-      startMinutes: timeToMinutes(row.startTime!),
-      endMinutes: timeToMinutes(row.endTime!),
+  // Aynı ders + saat + türün salon/şube satırları tek öğede toplanıyor
+  // (kullanıcı isteği, 2026-09-17 — bkz. lib/calendar/grouping.ts); döküm hover'da.
+  const examGroups = groupSessions(dayExams, (row) => row.examType);
+  const examItems: TimelineItem[] = examGroups
+    .filter((g) => g.startTime && g.endTime)
+    .map((g) => ({
+      id: `exam:${g.rows[0].id}`,
+      label: groupTimelineLabel(g, "salon"),
+      kind: examTypeKind(g.rows[0].examType),
+      group: "exam" as const,
+      startMinutes: timeToMinutes(g.startTime!),
+      endMinutes: timeToMinutes(g.endTime!),
+      detail: g.rows.length > 1 ? describeGroupRows(g) : undefined,
     }));
 
   const eventItems: TimelineItem[] = dayEvents
@@ -189,25 +195,29 @@ export async function getDayDetail(date: Date, activeLayers: Set<string> = new S
       id: `event:${row.id}`,
       label: row.title,
       kind: clubEventKindFromStatus(row.status),
+      group: "event" as const,
       startMinutes: clubMinutesOfDay(row.startAt),
       endMinutes: clubMinutesOfDay(row.endAt),
     }));
 
-  const courseItems: TimelineItem[] = dayCourseSessions
-    .filter((row) => row.startTime && row.endTime)
-    .map((row) => ({
-      id: `course:${row.id}`,
-      label: `${row.courseCode ?? "Ders"}${row.room ? ` · ${row.room}` : ""}`,
-      kind: courseSessionKind(row.room),
-      startMinutes: timeToMinutes(row.startTime!),
-      endMinutes: timeToMinutes(row.endTime!),
+  const courseGroups = groupSessions(dayCourseSessions);
+  const courseItems: TimelineItem[] = courseGroups
+    .filter((g) => g.startTime && g.endTime)
+    .map((g) => ({
+      id: `course:${g.rows[0].id}`,
+      label: groupTimelineLabel(g, "şube"),
+      kind: courseSessionKind(g.rows[0].room),
+      group: "course" as const,
+      startMinutes: timeToMinutes(g.startTime!),
+      endMinutes: timeToMinutes(g.endTime!),
+      detail: g.rows.length > 1 ? describeGroupRows(g) : undefined,
     }));
 
   const items = [...examItems, ...courseItems, ...eventItems];
 
   const summaryParts: string[] = [];
-  if (dayExams.length > 0) summaryParts.push(`${dayExams.length} sınav`);
-  if (dayCourseSessions.length > 0) summaryParts.push(`${dayCourseSessions.length} ders`);
+  if (examGroups.length > 0) summaryParts.push(`${examGroups.length} sınav`);
+  if (courseGroups.length > 0) summaryParts.push(`${courseGroups.length} ders`);
   if (dayEvents.length > 0) summaryParts.push(`${dayEvents.length} etkinlik`);
   const summaryText =
     summaryParts.length > 0

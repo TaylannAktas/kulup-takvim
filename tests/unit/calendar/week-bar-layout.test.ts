@@ -48,3 +48,22 @@ describe("assignWeekBarLanes", () => {
     expect(laneA).not.toBe(laneB);
   });
 });
+
+describe("assignWeekBarLanes priority", () => {
+  it("puts club events in the first lane even when other bars start earlier", () => {
+    const course: CalendarBarItem = { ...bar("course", "2026-09-07", "2026-09-07"), kind: "course_session" };
+    const exam: CalendarBarItem = { ...bar("exam", "2026-09-07", "2026-09-07"), kind: "exam_final" };
+    const event: CalendarBarItem = { ...bar("event", "2026-09-07", "2026-09-07"), kind: "club_event_onaylandi" };
+    const result = assignWeekBarLanes([course, exam, event], MONDAY);
+    expect(result.find((r) => r.bar.id === "event")?.lane).toBe(0);
+    expect(result.find((r) => r.bar.id === "exam")?.lane).toBe(1);
+    expect(result.find((r) => r.bar.id === "course")?.lane).toBe(2);
+  });
+
+  it("reuses a lower lane for a later bar that fits around a prioritized one", () => {
+    const event: CalendarBarItem = { ...bar("event", "2026-09-10", "2026-09-11"), kind: "club_event_fikir" };
+    const course: CalendarBarItem = { ...bar("course", "2026-09-07", "2026-09-07"), kind: "course_session" };
+    const result = assignWeekBarLanes([course, event], MONDAY);
+    expect(result.find((r) => r.bar.id === "course")?.lane).toBe(0);
+  });
+});
